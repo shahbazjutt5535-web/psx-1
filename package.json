@@ -1,7 +1,7 @@
 {
   "name": "psx-telegram-indicator-bot",
   "version": "1.0.0",
-  "description": "Telegram bot to fetch PSX symbols and calculate indicators",
+  "description": "Telegram bot for PSX symbols with technical indicators",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"

@@ -1,5 +1,5 @@
 // -------------------- CONFIG --------------------
-const TELEGRAM_BOT_TOKEN = "8493857966:AAEbHaLyxWy_sAs56Mgd0ZBpn64WY1SKF64"; // Replace with your Telegram bot token
+const TELEGRAM_BOT_TOKEN = "8493857966:AAFURe8TIedYov8XnKzM1L9g_724QQe8LS8"; // Replace with your Telegram bot token
 const PSX_BASE_URL = "https://psxterminal.com/api/ticks/"; 
 const PSX_WS_URL = "wss://psxterminal.com/"; 
 const PORT = process.env.PORT || 10000; 

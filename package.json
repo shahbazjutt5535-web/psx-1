@@ -1,7 +1,7 @@
 {
   "name": "psx-telegram-indicator-bot",
-  "version": "1.0.0",
-  "description": "PSX Telegram Indicator Bot",
+  "version": "1.1.0",
+  "description": "PSX Telegram Indicator Bot (Stable WebSocket + REST fallback)",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
@@ -10,6 +10,7 @@
     "axios": "^1.6.0",
     "node-telegram-bot-api": "^0.64.0",
     "technicalindicators": "^3.1.0",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "ws": "^8.17.0"
   }
 }

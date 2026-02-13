@@ -1,198 +1,116 @@
-const TelegramBot = require("node-telegram-bot-api");
+// -------------------- CONFIG --------------------
+const TELEGRAM_BOT_TOKEN = "8493857966:AAEbHaLyxWy_sAs56Mgd0ZBpn64WY1SKF64"; // <- replace with your token
+const PSX_BASE_URL = "https://psxterminal.com/api/ticks/"; 
+const PSX_WS_URL = "wss://psxterminal.com/";
+const PORT = process.env.PORT || 10000; 
+const DOMAIN = "https://psx-1.onrender.com"; // replace with your Render domain
+
+// Symbols and intervals
+const SYMBOLS = ["MEZANETF", "NATBANKETF", "FFC", "ENGRO", "PANTHERTYRE", "HUBC"];
+const INTERVALS = ["10m","15m","30m","1h","4h","12h","1d"];
+// ------------------------------------------------
+
 const axios = require("axios");
-const ti = require("technicalindicators");
 const express = require("express");
+const bodyParser = require("body-parser");
+const TelegramBot = require("node-telegram-bot-api");
+const { SMA, EMA, MACD, RSI, OBV } = require("technicalindicators");
 const WebSocket = require("ws");
 
-// ================= CONFIG =================
-// Replace this with your actual bot token from @BotFather
-const BOT_TOKEN = "8493857966:AAEbHaLyxWy_sAs56Mgd0ZBpn64WY1SKF64"; 
-
-// Check token
-if (!BOT_TOKEN) {
-  console.error("❌ Telegram Bot Token not provided!");
-  process.exit(1);
-}
-
-const PORT = 10000;
-const BASE_URL = "https://psxterminal.com/api/ticks/REG/"; // REST fallback
-const WS_URL = "wss://psxterminal.com/"; // WebSocket live
-
-// ================= EXPRESS SERVER =================
 const app = express();
-app.use(express.json());
-app.get("/", (req, res) => res.send("✅ PSX Telegram Bot Running"));
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.use(bodyParser.json());
 
-// ================= TELEGRAM BOT =================
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+// Initialize Telegram bot without polling
+const bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
+bot.setWebHook(`${DOMAIN}/bot${TELEGRAM_BOT_TOKEN}`);
 
-// ================= SYMBOLS =================
-const SYMBOLS = {
-  MZNPETF: "Meezan ETF",
-  NITETF: "National ETF",
-  FFC: "Fauji Fertilizer",
-  ENGRO: "Engro Corp",
-  PTL: "Panther Tyre",
-  HUBC: "Hubco"
-};
+// Webhook endpoint
+app.post(`/bot${TELEGRAM_BOT_TOKEN}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
 
-// ================= TIMEFRAMES =================
-const TIMEFRAMES = {
-  "10m": 600,
-  "15m": 900,
-  "30m": 1800,
-  "1h": 3600,
-  "4h": 14400,
-  "12h": 43200,
-  "1d": 86400
-};
+bot.onText(/\/start/, (msg) => {
+  bot.sendMessage(msg.chat.id, "PSX Indicator Bot ✅\nSend /price SYMBOL INTERVAL\nExample: /price ENGRO 15m");
+});
 
-// ================= STORAGE =================
-const priceStore = {};
-Object.keys(SYMBOLS).forEach(s => priceStore[s] = []);
-
-// ================= REST FETCH =================
-async function fetchPrice(symbol) {
-  try {
-    const res = await axios.get(BASE_URL + symbol);
-    if (!res.data?.price) throw new Error("No price returned");
-    return {
-      price: parseFloat(res.data.price),
-      volume: parseFloat(res.data.volume || 1),
-      time: Math.floor(Date.now() / 1000)
-    };
-  } catch (err) {
-    console.log("PSX API error:", err.message);
-    return null;
-  }
-}
-
-// ================= WEBSOCKET =================
-function initWS() {
-  const ws = new WebSocket(WS_URL);
-  ws.on("open", () => {
-    console.log("WebSocket connected");
-    Object.keys(SYMBOLS).forEach(sym => ws.send(JSON.stringify({ subscribe: sym })));
-  });
-
-  ws.on("message", data => {
-    try {
-      const tick = JSON.parse(data);
-      if (SYMBOLS[tick.symbol]) {
-        priceStore[tick.symbol].push({
-          price: parseFloat(tick.price),
-          volume: parseFloat(tick.volume || 1),
-          time: Math.floor(Date.now() / 1000)
-        });
-        if (priceStore[tick.symbol].length > 2000)
-          priceStore[tick.symbol] = priceStore[tick.symbol].slice(-2000);
-      }
-    } catch {}
-  });
-
-  ws.on("close", () => {
-    console.log("WebSocket disconnected, reconnecting in 5s...");
-    setTimeout(initWS, 5000);
-  });
-
-  ws.on("error", () => ws.close());
-}
-initWS();
-
-// ================= BUILD CANDLES =================
-function buildCandles(data, timeframe) {
-  if (!data.length) return null;
-  const buckets = {};
-  data.forEach(t => {
-    const key = Math.floor(t.time / timeframe) * timeframe;
-    if (!buckets[key]) {
-      buckets[key] = { open: t.price, high: t.price, low: t.price, close: t.price, volume: 0 };
-    }
-    buckets[key].high = Math.max(buckets[key].high, t.price);
-    buckets[key].low = Math.min(buckets[key].low, t.price);
-    buckets[key].close = t.price;
-    buckets[key].volume += t.volume;
-  });
-  return Object.values(buckets);
-}
-
-// ================= INDICATORS =================
-function calculateIndicators(candles) {
-  const closes = candles.map(c => c.close);
-  const volumes = candles.map(c => c.volume);
-
-  if (closes.length < 30) {
-    const last = closes.at(-1) || 100;
-    while (closes.length < 30) {
-      closes.unshift(last);
-      volumes.unshift(1);
-    }
-  }
-
-  try {
-    return {
-      price: closes.at(-1).toFixed(2),
-      rsi: ti.RSI.calculate({ values: closes, period: 14 }).at(-1)?.toFixed(2) || "N/A",
-      ema: ti.EMA.calculate({ values: closes, period: 20 }).at(-1)?.toFixed(2) || "N/A",
-      sma: ti.SMA.calculate({ values: closes, period: 20 }).at(-1)?.toFixed(2) || "N/A",
-      macd: ti.MACD.calculate({ values: closes, fastPeriod: 12, slowPeriod: 26, signalPeriod: 9 }).at(-1)?.MACD?.toFixed(2) || "N/A",
-      obv: ti.OBV.calculate({ close: closes, volume: volumes }).at(-1)?.toFixed(2) || "N/A"
-    };
-  } catch {
-    return null;
-  }
-}
-
-// ================= TELEGRAM COMMAND =================
-bot.onText(/\/analyze (.+) (.+)/, async (msg, match) => {
+bot.onText(/\/price (.+) (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const symbol = match[1].toUpperCase();
-  const tf = match[2];
+  const interval = match[2].toLowerCase();
 
-  if (!SYMBOLS[symbol]) return bot.sendMessage(chatId, "❌ Symbol not supported");
-  if (!TIMEFRAMES[tf]) return bot.sendMessage(chatId, "❌ Invalid timeframe");
-
-  let candles = buildCandles(priceStore[symbol], TIMEFRAMES[tf]);
-  if (!candles || !candles.length) {
-    const tick = await fetchPrice(symbol);
-    if (!tick) return bot.sendMessage(chatId, "❌ Cannot fetch data currently");
-    priceStore[symbol].push(tick);
-    candles = buildCandles(priceStore[symbol], TIMEFRAMES[tf]);
+  if (!SYMBOLS.includes(symbol) || !INTERVALS.includes(interval)) {
+    bot.sendMessage(chatId, `Invalid symbol or interval.\nSymbols: ${SYMBOLS.join(", ")}\nIntervals: ${INTERVALS.join(", ")}`);
+    return;
   }
 
-  const result = calculateIndicators(candles);
-  if (!result) return bot.sendMessage(chatId, "❌ Error calculating indicators");
+  bot.sendMessage(chatId, `Fetching ${symbol} data for ${interval}...`);
 
-  const signal = result.rsi > 70 ? "Overbought" : result.rsi < 30 ? "Oversold" : "Neutral";
-
-  bot.sendMessage(chatId,
-`📊 ${SYMBOLS[symbol]} (${symbol})
-⏱ ${tf}
-
-💰 Price: ${result.price}
-
-RSI: ${result.rsi}
-EMA20: ${result.ema}
-SMA20: ${result.sma}
-MACD: ${result.macd}
-OBV: ${result.obv}
-
-Signal: ${signal}`);
+  try {
+    const data = await fetchPSXData(symbol);
+    const indicators = calculateIndicators(data);
+    const message = formatIndicators(symbol, interval, indicators);
+    bot.sendMessage(chatId, message);
+  } catch (err) {
+    bot.sendMessage(chatId, `Error fetching data: ${err.message}`);
+  }
 });
 
-// ================= START COMMAND =================
-bot.onText(/\/start/, msg => {
-  bot.sendMessage(msg.chat.id,
-`✅ PSX Indicator Bot Ready
+// -------------------- PSX DATA --------------------
+async function fetchPSXData(symbol) {
+  try {
+    const res = await axios.get(`${PSX_BASE_URL}REG/${symbol}`); // REG market type
+    if (!res.data || !res.data.price) throw new Error("No price returned");
+    return res.data; // customize according to PSX API response
+  } catch (err) {
+    console.log("PSX API error:", err.message, "Retrying in 5s...");
+    await new Promise(r => setTimeout(r, 5000));
+    return fetchPSXData(symbol);
+  }
+}
 
-Usage:
-/analyze HUBC 15m
-/analyze ENGRO 1h
-/analyze MZNPETF 4h
+// -------------------- INDICATORS --------------------
+function calculateIndicators(data) {
+  const close = [data.price]; // for demo, normally you would collect historical prices
+  return {
+    sma: SMA.calculate({ period: 14, values: close }).pop() || data.price,
+    ema: EMA.calculate({ period: 14, values: close }).pop() || data.price,
+    rsi: RSI.calculate({ period: 14, values: close }).pop() || 50,
+    macd: MACD.calculate({
+      values: close,
+      fastPeriod: 12,
+      slowPeriod: 26,
+      signalPeriod: 9,
+      SimpleMAOscillator: false,
+      SimpleMASignal: false
+    }).pop() || { MACD: 0, signal: 0, histogram: 0 },
+    obv: OBV.calculate({ close, volume: [data.volume || 1] }).pop() || 0
+  };
+}
 
-Supported Symbols:
-MZNPETF, NITETF, FFC, ENGRO, PTL, HUBC`);
-});
+// -------------------- FORMAT --------------------
+function formatIndicators(symbol, interval, ind) {
+  return `
+📊 ${symbol} - ${interval.toUpperCase()}
+Price: ${ind.sma.toFixed(2)}
+SMA: ${ind.sma.toFixed(2)}
+EMA: ${ind.ema.toFixed(2)}
+RSI: ${ind.rsi.toFixed(2)}
+MACD: ${ind.macd.MACD.toFixed(2)}, Signal: ${ind.macd.signal.toFixed(2)}, Hist: ${ind.macd.histogram.toFixed(2)}
+OBV: ${ind.obv.toFixed(0)}
+`;
+}
 
-console.log("Bot ready ✅");
+// -------------------- WEBSOCKET --------------------
+function connectWS() {
+  const ws = new WebSocket(PSX_WS_URL);
+  ws.on("open", () => console.log("WebSocket connected"));
+  ws.on("close", () => { 
+    console.log("WebSocket disconnected, reconnecting in 5s...");
+    setTimeout(connectWS, 5000);
+  });
+  ws.on("error", err => console.log("WebSocket error:", err.message));
+}
+connectWS();
+
+// -------------------- START SERVER

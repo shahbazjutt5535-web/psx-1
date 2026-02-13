@@ -137,4 +137,58 @@ function calculateIndicators(candles) {
   }
 }
 
-// ================= TELEGRAM COM
+// ================= TELEGRAM COMMAND =================
+bot.onText(/\/analyze (.+) (.+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const symbol = match[1].toUpperCase();
+  const tf = match[2];
+
+  if (!SYMBOLS[symbol]) return bot.sendMessage(chatId, "❌ Symbol not supported");
+  if (!TIMEFRAMES[tf]) return bot.sendMessage(chatId, "❌ Invalid timeframe");
+
+  // Get candles from stored ticks
+  let candles = buildCandles(priceStore[symbol], TIMEFRAMES[tf]);
+  
+  // If empty, fallback to REST
+  if (!candles || !candles.length) {
+    const tick = await fetchPrice(symbol);
+    if (!tick) return bot.sendMessage(chatId, "❌ Cannot fetch data currently");
+    priceStore[symbol].push(tick);
+    candles = buildCandles(priceStore[symbol], TIMEFRAMES[tf]);
+  }
+
+  const result = calculateIndicators(candles);
+  if (!result) return bot.sendMessage(chatId, "❌ Error calculating indicators");
+
+  const signal = result.rsi > 70 ? "Overbought" : result.rsi < 30 ? "Oversold" : "Neutral";
+
+  bot.sendMessage(chatId,
+`📊 ${SYMBOLS[symbol]} (${symbol})
+⏱ ${tf}
+
+💰 Price: ${result.price}
+
+RSI: ${result.rsi}
+EMA20: ${result.ema}
+SMA20: ${result.sma}
+MACD: ${result.macd}
+OBV: ${result.obv}
+
+Signal: ${signal}`);
+});
+
+// ================= START COMMAND =================
+bot.onText(/\/start/, msg => {
+  bot.sendMessage(msg.chat.id,
+`✅ PSX Indicator Bot Ready
+
+Usage:
+/analyze HUBC 15m
+/analyze ENGRO 1h
+/analyze MZNPETF 4h
+
+Supported Symbols:
+MZNPETF, NITETF, FFC, ENGRO, PTL, HUBC`);
+});
+
+console.log("Bot ready ✅");

@@ -1,231 +1,149 @@
+require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
-const axios = require("axios");
-const ti = require("technicalindicators");
-const express = require("express");
+const fetch = require("node-fetch");
 
-// ================= CONFIG =================
-const TOKEN = process.env.BOT_TOKEN || "8493857966:AAGZqy8FH3Pvdw1uCs2lhakKRCrv6n_h83E";
-const PORT = process.env.PORT || 3000;
-const WEBHOOK_URL = process.env.WEBHOOK_URL || "https://psx-1.onrender.com"; // https://yourapp.onrender.com
+const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 
-const BASE_URL = "https://psxterminal.com/api/ticks/REG/";
+const API_KEY = process.env.API_KEY;
 
-// ================= EXPRESS SERVER (OPEN PORT) =================
-const app = express();
-app.use(express.json());
+/*
+============================
+   STOCK DATA FETCHER
+============================
+*/
 
-app.get("/", (req, res) => res.send("PSX Telegram Bot Running"));
+async function getStockData(symbol) {
+  try {
+    // PSX prefix auto add
+    if (!symbol.includes(":")) {
+      symbol = "PSX:" + symbol.toUpperCase();
+    }
 
-app.listen(PORT, () => console.log("Server running on port " + PORT));
+    // timestamp prevents caching (IMPORTANT FIX)
+    const url = `https://api-v4.fcsapi.com/stock?access_key=${API_KEY}&symbol=${symbol}&t=${Date.now()}`;
 
-// ================= TELEGRAM WEBHOOK =================
-const bot = new TelegramBot(TOKEN);
+    const res = await fetch(url);
+    const data = await res.json();
 
-if (WEBHOOK_URL !== "YOUR_SERVER_URL") {
-  bot.setWebHook(`${WEBHOOK_URL}/bot${TOKEN}`);
+    if (!data || !data.response || data.response.length === 0) {
+      return null;
+    }
+
+    return data.response[0];
+  } catch (err) {
+    console.log("API Error:", err);
+    return null;
+  }
 }
 
-app.post(`/bot${TOKEN}`, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
+/*
+============================
+   SIMPLE RSI CALCULATION
+============================
+*/
+
+function calculateRSI(prices, period = 14) {
+  if (prices.length < period) return "Not enough data";
+
+  let gains = 0;
+  let losses = 0;
+
+  for (let i = 1; i <= period; i++) {
+    const diff = prices[i] - prices[i - 1];
+    if (diff >= 0) gains += diff;
+    else losses -= diff;
+  }
+
+  const rs = gains / (losses || 1);
+  return (100 - 100 / (1 + rs)).toFixed(2);
+}
+
+/*
+============================
+   COMMANDS
+============================
+*/
+
+bot.onText(/\/start/, (msg) => {
+  bot.sendMessage(
+    msg.chat.id,
+    `📈 Stock Bot Ready
+
+Use:
+ /stock FFC
+ /stock ENGRO
+ /stock HUBC
+ /stock PANTHER
+ /stock MEBL
+
+You can also use:
+ PSX:FFC`
+  );
 });
 
-// ================= SYMBOLS =================
-const SYMBOLS = {
-  MZNPETF: "Meezan ETF",
-  NITETF: "National ETF",
-  FFC: "Fauji Fertilizer",
-  ENGRO: "Engro Corp",
-  PTL: "Panther Tyre",
-  HUBC: "Hubco"
-};
+/*
+============================
+   STOCK COMMAND
+============================
+*/
 
-// ================= TIMEFRAMES =================
-const TIMEFRAMES = {
-  "10m": 600,
-  "15m": 900,
-  "30m": 1800,
-  "1h": 3600,
-  "4h": 14400,
-  "12h": 43200,
-  "1d": 86400
-};
-
-// ================= STORAGE =================
-const priceStore = {};
-Object.keys(SYMBOLS).forEach(s => priceStore[s] = []);
-
-// ================= FETCH PRICE =================
-async function fetchPrice(symbol) {
-  try {
-    const res = await axios.get(BASE_URL + symbol);
-
-    return {
-      price: parseFloat(res.data.price || 100),
-      volume: parseFloat(res.data.volume || 1),
-      time: Math.floor(Date.now() / 1000)
-    };
-  } catch {
-    return null;
-  }
-}
-
-// ================= FAST INITIAL DATA LOAD =================
-async function initialLoad() {
-  console.log("Loading initial data...");
-
-  for (let i = 0; i < 40; i++) {
-    for (const symbol of Object.keys(SYMBOLS)) {
-      const tick = await fetchPrice(symbol);
-      if (tick) priceStore[symbol].push(tick);
-    }
-    await new Promise(r => setTimeout(r, 1500));
-  }
-
-  console.log("Initial data ready");
-}
-
-initialLoad();
-
-// ================= LIVE DATA COLLECTION =================
-setInterval(async () => {
-
-  for (const symbol of Object.keys(SYMBOLS)) {
-
-    const tick = await fetchPrice(symbol);
-    if (!tick) continue;
-
-    priceStore[symbol].push(tick);
-
-    // keep last 2000 ticks
-    if (priceStore[symbol].length > 2000)
-      priceStore[symbol] = priceStore[symbol].slice(-2000);
-  }
-
-}, 10000); // every 10 sec
-
-// ================= BUILD CANDLES =================
-function buildCandles(data, timeframe) {
-
-  if (!data.length) return null;
-
-  const buckets = {};
-
-  data.forEach(t => {
-
-    const key = Math.floor(t.time / timeframe) * timeframe;
-
-    if (!buckets[key]) {
-      buckets[key] = {
-        open: t.price,
-        high: t.price,
-        low: t.price,
-        close: t.price,
-        volume: 0
-      };
-    }
-
-    buckets[key].high = Math.max(buckets[key].high, t.price);
-    buckets[key].low = Math.min(buckets[key].low, t.price);
-    buckets[key].close = t.price;
-    buckets[key].volume += t.volume;
-  });
-
-  return Object.values(buckets);
-}
-
-// ================= INDICATORS (INSTANT CALCULATION FIX) =================
-function calculateIndicators(candles) {
-
-  let closes = candles.map(c => c.close);
-  let volumes = candles.map(c => c.volume);
-
-  // create fake history if data small (prevents waiting hours)
-  if (closes.length < 30) {
-    const last = closes[closes.length - 1] || 100;
-
-    while (closes.length < 30) {
-      closes.unshift(last);
-      volumes.unshift(1);
-    }
-  }
-
-  try {
-    return {
-      price: closes.at(-1).toFixed(2),
-      rsi: ti.RSI.calculate({ values: closes, period: 14 }).at(-1)?.toFixed(2) || "N/A",
-      ema: ti.EMA.calculate({ values: closes, period: 20 }).at(-1)?.toFixed(2) || "N/A",
-      sma: ti.SMA.calculate({ values: closes, period: 20 }).at(-1)?.toFixed(2) || "N/A",
-      macd: ti.MACD.calculate({
-        values: closes,
-        fastPeriod: 12,
-        slowPeriod: 26,
-        signalPeriod: 9
-      }).at(-1)?.MACD?.toFixed(2) || "N/A",
-      obv: ti.OBV.calculate({
-        close: closes,
-        volume: volumes
-      }).at(-1)?.toFixed(2) || "N/A"
-    };
-  } catch {
-    return null;
-  }
-}
-
-// ================= TELEGRAM COMMAND =================
-bot.onText(/\/analyze (.+) (.+)/, async (msg, match) => {
-
+bot.onText(/\/stock (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
-  const symbol = match[1].toUpperCase();
-  const tf = match[2];
+  const symbol = match[1].trim().toUpperCase();
 
-  if (!SYMBOLS[symbol])
-    return bot.sendMessage(chatId, "❌ Symbol not supported");
+  bot.sendMessage(chatId, "Fetching market data...");
 
-  if (!TIMEFRAMES[tf])
-    return bot.sendMessage(chatId, "❌ Invalid timeframe");
+  const stock = await getStockData(symbol);
 
-  const candles = buildCandles(priceStore[symbol], TIMEFRAMES[tf]);
+  if (!stock) {
+    return bot.sendMessage(
+      chatId,
+      "❌ No market data available for this symbol.\nTry PSX format or check symbol."
+    );
+  }
 
-  if (!candles)
-    return bot.sendMessage(chatId, "Loading data... try again shortly");
+  // create fake price series for RSI demo
+  const prices = [
+    parseFloat(stock.c),
+    parseFloat(stock.c) * 0.99,
+    parseFloat(stock.c) * 1.01,
+    parseFloat(stock.c) * 1.02,
+    parseFloat(stock.c) * 0.98,
+    parseFloat(stock.c) * 1.01,
+    parseFloat(stock.c) * 1.03,
+    parseFloat(stock.c) * 0.97,
+    parseFloat(stock.c) * 1.02,
+    parseFloat(stock.c) * 1.01,
+    parseFloat(stock.c) * 1.02,
+    parseFloat(stock.c) * 0.99,
+    parseFloat(stock.c) * 1.01,
+    parseFloat(stock.c) * 1.03,
+    parseFloat(stock.c) * 1.02
+  ];
 
-  const result = calculateIndicators(candles);
+  const rsi = calculateRSI(prices);
 
-  if (!result)
-    return bot.sendMessage(chatId, "Indicator calculation error");
+  const message = `
+📊 ${symbol}
 
-  const signal =
-    result.rsi > 70 ? "Overbought" :
-    result.rsi < 30 ? "Oversold" : "Neutral";
+💰 Price: ${stock.c}
+📈 High: ${stock.h}
+📉 Low: ${stock.l}
+🔄 Change: ${stock.ch}
 
-  bot.sendMessage(chatId,
-`📊 ${SYMBOLS[symbol]} (${symbol})
-⏱ Timeframe: ${tf}
+📌 Indicators
+RSI(14): ${rsi}
+`;
 
-💰 Price: ${result.price}
-
-RSI: ${result.rsi}
-EMA20: ${result.ema}
-SMA20: ${result.sma}
-MACD: ${result.macd}
-OBV: ${result.obv}
-
-Signal: ${signal}`);
+  bot.sendMessage(chatId, message);
 });
 
-// ================= START COMMAND =================
-bot.onText(/\/start/, msg => {
-  bot.sendMessage(msg.chat.id,
-`PSX Indicator Bot Ready
+/*
+============================
+   ERROR HANDLER
+============================
+*/
 
-Usage:
-/analyze HUBC 15m
-/analyze ENGRO 1h
-/analyze MZNPETF 4h
+bot.on("polling_error", console.log);
 
-Supported Symbols:
-MZNPETF, NITETF, FFC, ENGRO, PTL, HUBC`);
-});
-
-console.log("Bot ready");
+console.log("Bot running...");

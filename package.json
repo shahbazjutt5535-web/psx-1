@@ -1,19 +1,15 @@
 {
-  "name": "psx-telegram-indicator-bot",
+  "name": "psx-alpha-bot",
   "version": "1.0.0",
-  "description": "Telegram bot for PSX indicators (SMA, EMA, RSI, MACD, OBV)",
+  "description": "Telegram bot for PSX indicators using Alpha Vantage",
   "main": "bot.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node bot.js"
   },
-  "author": "Your Name",
-  "license": "MIT",
   "dependencies": {
-    "axios": "^1.6.6",
+    "axios": "^1.5.0",
     "express": "^4.18.2",
     "node-telegram-bot-api": "^0.61.0",
-    "technicalindicators": "^3.0.9",
-    "ws": "^8.16.0"
+    "technicalindicators": "^3.1.0"
   }
 }

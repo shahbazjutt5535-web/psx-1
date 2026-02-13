@@ -5,8 +5,16 @@ const express = require("express");
 const WebSocket = require("ws");
 
 // ================= CONFIG =================
-const TOKEN = process.env.BOT_TOKEN;
-const PORT = process.env.PORT || 3000;
+// Replace this with your actual bot token from @BotFather
+const BOT_TOKEN = "123456789:ABCDefghijklmnopqrsYourBotTokenHere"; 
+
+// Check token
+if (!BOT_TOKEN) {
+  console.error("❌ Telegram Bot Token not provided!");
+  process.exit(1);
+}
+
+const PORT = 10000;
 const BASE_URL = "https://psxterminal.com/api/ticks/REG/"; // REST fallback
 const WS_URL = "wss://psxterminal.com/"; // WebSocket live
 
@@ -17,7 +25,7 @@ app.get("/", (req, res) => res.send("✅ PSX Telegram Bot Running"));
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 // ================= TELEGRAM BOT =================
-const bot = new TelegramBot(TOKEN, { polling: true });
+const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
 // ================= SYMBOLS =================
 const SYMBOLS = {
@@ -77,7 +85,6 @@ function initWS() {
           volume: parseFloat(tick.volume || 1),
           time: Math.floor(Date.now() / 1000)
         });
-        // Limit stored ticks
         if (priceStore[tick.symbol].length > 2000)
           priceStore[tick.symbol] = priceStore[tick.symbol].slice(-2000);
       }
@@ -146,10 +153,7 @@ bot.onText(/\/analyze (.+) (.+)/, async (msg, match) => {
   if (!SYMBOLS[symbol]) return bot.sendMessage(chatId, "❌ Symbol not supported");
   if (!TIMEFRAMES[tf]) return bot.sendMessage(chatId, "❌ Invalid timeframe");
 
-  // Get candles from stored ticks
   let candles = buildCandles(priceStore[symbol], TIMEFRAMES[tf]);
-  
-  // If empty, fallback to REST
   if (!candles || !candles.length) {
     const tick = await fetchPrice(symbol);
     if (!tick) return bot.sendMessage(chatId, "❌ Cannot fetch data currently");

@@ -1,14 +1,11 @@
 // -------------------- CONFIG --------------------
-const TELEGRAM_BOT_TOKEN = "8493857966:AAFURe8TIedYov8XnKzM1L9g_724QQe8LS8"; // Replace with your Telegram bot token
-const PSX_BASE_URL = "https://psxterminal.com/api/ticks/"; 
-const PSX_WS_URL = "wss://psxterminal.com/"; 
-const PORT = process.env.PORT || 10000; 
+const TELEGRAM_BOT_TOKEN = "8493857966:AAFURe8TIedYov8XnKzM1L9g_724QQe8LS8"; // Replace with your token
+const PSX_BASE_URL = "https://psxterminal.com/api/ticks/";
+const PSX_WS_URL = "wss://psxterminal.com/";
+const PORT = process.env.PORT || 10000;
 const DOMAIN = "https://psx-1.onrender.com"; // Replace with your deployed URL
 
-// Supported symbols
 const SYMBOLS = ["MZNPETF", "NITETF", "FFC", "ENGRO", "PTL", "HUBC"];
-
-// Map symbol to market type
 const SYMBOL_MARKET = {
   "FFC": "REG",
   "ENGRO": "REG",
@@ -17,10 +14,10 @@ const SYMBOL_MARKET = {
   "MZNPETF": "IDX",
   "NITETF": "IDX"
 };
+const INTERVALS = ["10m", "15m", "30m", "1h", "4h", "12h", "1d"];
+const BUFFER_SIZE = 50; // number of last prices stored
 
-// Supported intervals
-const INTERVALS = ["10m","15m","30m","1h","4h","12h","1d"];
-
+// -------------------- MODULES --------------------
 const axios = require("axios");
 const express = require("express");
 const bodyParser = require("body-parser");
@@ -28,24 +25,28 @@ const TelegramBot = require("node-telegram-bot-api");
 const ti = require("technicalindicators");
 const WebSocket = require("ws");
 
+// -------------------- APP & BOT --------------------
 const app = express();
 app.use(bodyParser.json());
 
-// Initialize Telegram bot (webhook)
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
 bot.setWebHook(`${DOMAIN}/bot${TELEGRAM_BOT_TOKEN}`);
 
-app.post(`/bot${TELEGRAM_BOT_TOKEN}`, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
+// -------------------- PRICE BUFFER --------------------
+const priceBuffer = {}; // priceBuffer[symbol][interval] = [prices]
+
+SYMBOLS.forEach(sym => {
+  priceBuffer[sym] = {};
+  INTERVALS.forEach(intv => {
+    priceBuffer[sym][intv] = [];
+  });
 });
 
-// Command /start
+// -------------------- TELEGRAM COMMANDS --------------------
 bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(msg.chat.id, "PSX Indicator Bot 🤖\nUse: /price SYMBOL INTERVAL\nExample: /price FFC 15m");
+  bot.sendMessage(msg.chat.id, `PSX Indicator Bot 🤖\nUse: /price SYMBOL INTERVAL\nExample: /price FFC 15m`);
 });
 
-// Command /price SYMBOL INTERVAL
 bot.onText(/\/price (.+) (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const symbol = match[1].toUpperCase();
@@ -59,7 +60,7 @@ bot.onText(/\/price (.+) (.+)/, async (msg, match) => {
 
   try {
     const tick = await fetchPSX(symbol);
-    const indicators = calculateIndicators(tick);
+    const indicators = calculateIndicators(symbol, interval, tick);
     const response = formatIndicatorMessage(symbol, interval, indicators);
     bot.sendMessage(chatId, response);
   } catch (err) {
@@ -67,44 +68,57 @@ bot.onText(/\/price (.+) (.+)/, async (msg, match) => {
   }
 });
 
-// Fetch latest price from PSX Terminal
+// -------------------- FETCH PSX --------------------
 async function fetchPSX(symbol) {
   try {
     const market = SYMBOL_MARKET[symbol] || "REG";
     const res = await axios.get(`${PSX_BASE_URL}${market}/${symbol}`);
-    if (!res.data || !res.data.price) {
-      console.log(`No price returned for ${symbol}`);
-      return { price: null, volume: null };
-    }
-    return res.data;
+    const price = parseFloat(res.data.price);
+    const volume = parseFloat(res.data.volume || 1);
+
+    if (!price) throw new Error("No price returned");
+
+    return { price, volume };
   } catch (err) {
-    console.log("PSX API error:", err.message);
+    console.log(`PSX API error (${symbol}):`, err.message);
     return { price: null, volume: null };
   }
 }
 
-// Calculate indicators safely
-function calculateIndicators(data) {
-  const price = parseFloat(data.price) || 100; // fallback price
-  const volume = parseFloat(data.volume) || 1; // fallback volume
-  const simpleSeries = Array(8).fill(price); // dummy series for indicators
+// -------------------- CALCULATE INDICATORS --------------------
+function calculateIndicators(symbol, interval, tick) {
+  const buf = priceBuffer[symbol][interval];
+
+  // Add latest price to buffer
+  const price = tick.price || (buf[buf.length - 1] || 100);
+  buf.push(price);
+
+  // Keep buffer size
+  if (buf.length > BUFFER_SIZE) buf.shift();
+
+  // Prepare series for indicators
+  const series = buf.slice(); // copy of buffer
+  const volumeSeries = new Array(series.length).fill(tick.volume || 1);
 
   return {
-    price: price,
-    sma: ti.SMA.calculate({ period: 5, values: simpleSeries }).pop() || price,
-    ema: ti.EMA.calculate({ period: 5, values: simpleSeries }).pop() || price,
-    rsi: ti.RSI.calculate({ values: simpleSeries, period: 5 }).pop() || 50,
-    macd: ti.MACD.calculate({
-      values: simpleSeries,
-      fastPeriod: 12,
-      slowPeriod: 26,
-      signalPeriod: 9
-    }).pop() || { MACD: 0, signal: 0, histogram: 0 },
-    obv: ti.OBV.calculate({ close: simpleSeries, volume: new Array(simpleSeries.length).fill(volume) }).pop() || 0
+    price: price.toFixed(2),
+    sma: ti.SMA.calculate({ period: 5, values: series }).pop()?.toFixed(2) || price,
+    ema: ti.EMA.calculate({ period: 5, values: series }).pop()?.toFixed(2) || price,
+    rsi: ti.RSI.calculate({ values: series, period: 5 }).pop()?.toFixed(2) || 50,
+    macd: (() => {
+      const macdRes = ti.MACD.calculate({
+        values: series,
+        fastPeriod: 12,
+        slowPeriod: 26,
+        signalPeriod: 9
+      }).pop();
+      return macdRes || { MACD: 0, signal: 0, histogram: 0 };
+    })(),
+    obv: ti.OBV.calculate({ close: series, volume: volumeSeries }).pop() || 0
   };
 }
 
-// Format message to Telegram
+// -------------------- FORMAT MESSAGE --------------------
 function formatIndicatorMessage(symbol, interval, ind) {
   return `
 📊 ${symbol} (${interval})
@@ -112,12 +126,12 @@ Price: ${ind.price}
 SMA: ${ind.sma}
 EMA: ${ind.ema}
 RSI: ${ind.rsi}
-MACD: ${ind.macd.MACD}, Signal: ${ind.macd.signal}
+MACD: ${ind.macd.MACD.toFixed(2)}, Signal: ${ind.macd.signal.toFixed(2)}
 OBV: ${ind.obv}
 `;
 }
 
-// Optional WebSocket connection to keep alive
+// -------------------- OPTIONAL WEBSOCKET --------------------
 function initWebSocket() {
   const ws = new WebSocket(PSX_WS_URL);
 
@@ -130,7 +144,7 @@ function initWebSocket() {
 }
 initWebSocket();
 
-// Start web server
+// -------------------- START SERVER --------------------
 app.listen(PORT, () => {
   console.log("Bot ready ✅");
   console.log(`Server running on port ${PORT}`);

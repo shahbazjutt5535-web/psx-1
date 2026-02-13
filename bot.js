@@ -1,20 +1,27 @@
 // -------------------- CONFIG --------------------
-const TELEGRAM_BOT_TOKEN = "8493857966:AAFURe8TIedYov8XnKzM1L9g_724QQe8LS8"; // Replace with your token
-const PSX_BASE_URL = "https://psxterminal.com/api/ticks/";
+const TELEGRAM_BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"; 
 const PORT = process.env.PORT || 10000;
-const DOMAIN = "https://psx-1.onrender.com"; // Replace with your deployed URL
 
-const SYMBOLS = ["MZNPETF", "NITETF", "FFC", "ENGRO", "PTL", "HUBC"];
-const SYMBOL_MARKET = {
-  "FFC": "REG",
-  "ENGRO": "REG",
-  "HUBC": "REG",
-  "PTL": "REG",
-  "MZNPETF": "IDX",
-  "NITETF": "IDX"
+// Symbols with Yahoo format
+const SYMBOLS = {
+  "HUBC": "HUBC.PA",
+  "FFC": "FFC.PA",
+  "ENGRO": "ENGRO.PA",
+  "MZNPETF": "MZNPETF.PA",
+  "NITETF": "NITETF.PA",
+  "PTL": "PTL.PA"
 };
-const INTERVALS = ["10m", "15m", "30m", "1h", "4h", "12h", "1d"];
-const BUFFER_SIZE = 50; // store last 50 prices per interval
+
+const INTERVALS = {
+  "10m": "10m",
+  "15m": "15m",
+  "30m": "30m",
+  "1h": "60m",
+  "4h": "240m",
+  "1d": "1d"
+};
+
+const BUFFER_SIZE = 100;
 
 // -------------------- MODULES --------------------
 const axios = require("axios");
@@ -22,22 +29,63 @@ const express = require("express");
 const TelegramBot = require("node-telegram-bot-api");
 const ti = require("technicalindicators");
 
-// -------------------- APP & BOT --------------------
+// -------------------- SETUP --------------------
 const app = express();
+const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
 app.use(express.json());
 
-const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
+// -------------------- HELPERS --------------------
+async function fetchYahoo(symbol, interval) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&range=7d`;
+  try {
+    const res = await axios.get(url);
+    const data = res.data.chart.result[0];
+    const timestamps = data.timestamp;
+    const close = data.indicators.quote[0].close;
+    const volume = data.indicators.quote[0].volume;
+    let series = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      if (close[i] !== null) {
+        series.push({
+          time: timestamps[i],
+          close: close[i],
+          volume: volume[i]
+        });
+      }
+    }
+    return series;
+  } catch (err) {
+    throw new Error("Yahoo fetch error");
+  }
+}
 
-// -------------------- PRICE BUFFER --------------------
-const priceBuffer = {}; // priceBuffer[symbol][interval] = [prices]
-SYMBOLS.forEach(sym => {
-  priceBuffer[sym] = {};
-  INTERVALS.forEach(intv => priceBuffer[sym][intv] = []);
-});
+// -------------------- CALCULATE INDICATORS --------------------
+function calculateIndicators(series) {
+  const closes = series.map(x => x.close);
+  const volumes = series.map(x => x.volume);
+
+  const sma = ti.SMA.calculate({ values: closes, period: 14 }).pop();
+  const ema = ti.EMA.calculate({ values: closes, period: 14 }).pop();
+  const rsi = ti.RSI.calculate({ values: closes, period: 14 }).pop();
+  const macd = ti.MACD.calculate({
+    values: closes,
+    fastPeriod: 12,
+    slowPeriod: 26,
+    signalPeriod: 9
+  }).pop();
+  const obv = ti.OBV.calculate({ close: closes, volume: volumes }).pop();
+
+  return { sma, ema, rsi, macd, obv };
+}
 
 // -------------------- TELEGRAM COMMANDS --------------------
 bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(msg.chat.id, `PSX Indicator Bot 🤖\nUse: /price SYMBOL INTERVAL\nExample: /price FFC 15m`);
+  bot.sendMessage(msg.chat.id,
+`Yahoo PSX Bot 🤖
+Send:
+/price SYMBOL INTERVAL
+Example:
+/price HUBC 15m`);
 });
 
 bot.onText(/\/price (.+) (.+)/, async (msg, match) => {
@@ -45,82 +93,39 @@ bot.onText(/\/price (.+) (.+)/, async (msg, match) => {
   const symbol = match[1].toUpperCase();
   const interval = match[2].toLowerCase();
 
-  if (!SYMBOLS.includes(symbol) || !INTERVALS.includes(interval)) {
-    return bot.sendMessage(chatId, `❌ Invalid symbol or interval.\nSupported symbols: ${SYMBOLS.join(", ")}\nIntervals: ${INTERVALS.join(", ")}`);
+  if (!SYMBOLS[symbol] || !INTERVALS[interval]) {
+    return bot.sendMessage(chatId,
+`❌ Invalid input.
+Symbols: ${Object.keys(SYMBOLS).join(", ")}
+Intervals: ${Object.keys(INTERVALS).join(", ")}`);
   }
 
   bot.sendMessage(chatId, `Fetching ${symbol} (${interval})...`);
 
   try {
-    const tick = await fetchPSX(symbol);
-    if (!tick.price) throw new Error("No price available");
+    const series = await fetchYahoo(SYMBOLS[symbol], INTERVALS[interval]);
+    const latest = series[series.length - 1];
+    const indicators = calculateIndicators(series);
 
-    const indicators = calculateIndicators(symbol, interval, tick);
-    const response = formatIndicatorMessage(symbol, interval, indicators);
-    bot.sendMessage(chatId, response);
+    const msgText = `
+📊 ${symbol} (${interval})
+Price: ${latest.close.toFixed(2)}
+
+SMA: ${indicators.sma.toFixed(2)}
+EMA: ${indicators.ema.toFixed(2)}
+RSI: ${indicators.rsi.toFixed(2)}
+MACD: ${indicators.macd.MACD.toFixed(2)}, Signal: ${indicators.macd.signal.toFixed(2)}
+OBV: ${indicators.obv}
+`;
+    bot.sendMessage(chatId, msgText);
+
   } catch (err) {
-    bot.sendMessage(chatId, `❌ Cannot fetch data: ${err.message}`);
+    bot.sendMessage(chatId, `❌ Error fetching data.`);
   }
 });
 
-// -------------------- FETCH PSX --------------------
-async function fetchPSX(symbol) {
-  try {
-    const market = SYMBOL_MARKET[symbol] || "REG";
-    const res = await axios.get(`${PSX_BASE_URL}${market}/${symbol}`);
-    const data = res.data?.data;
-
-    if (!data || !data.price) throw new Error("No price available");
-
-    return { price: parseFloat(data.price), volume: parseFloat(data.volume || 1) };
-  } catch (err) {
-    console.log(`PSX API error (${symbol}):`, err.message);
-    return { price: null, volume: null };
-  }
-}
-
-// -------------------- CALCULATE INDICATORS --------------------
-function calculateIndicators(symbol, interval, tick) {
-  const buf = priceBuffer[symbol][interval];
-  const price = tick.price;
-
-  buf.push(price);
-  if (buf.length > BUFFER_SIZE) buf.shift();
-
-  const series = buf.slice();
-  const volumeSeries = new Array(series.length).fill(tick.volume || 1);
-
-  const sma = ti.SMA.calculate({ period: 5, values: series }).pop() || price;
-  const ema = ti.EMA.calculate({ period: 5, values: series }).pop() || price;
-  const rsi = ti.RSI.calculate({ values: series, period: 5 }).pop() || 50;
-  const macdRes = ti.MACD.calculate({ values: series, fastPeriod: 12, slowPeriod: 26, signalPeriod: 9 }).pop() || { MACD: 0, signal: 0 };
-  const obv = ti.OBV.calculate({ close: series, volume: volumeSeries }).pop() || 0;
-
-  return {
-    price: price.toFixed(2),
-    sma: sma.toFixed(2),
-    ema: ema.toFixed(2),
-    rsi: rsi.toFixed(2),
-    macd: macdRes,
-    obv: obv
-  };
-}
-
-// -------------------- FORMAT MESSAGE --------------------
-function formatIndicatorMessage(symbol, interval, ind) {
-  return `
-📊 ${symbol} (${interval})
-Price: ${ind.price}
-SMA: ${ind.sma}
-EMA: ${ind.ema}
-RSI: ${ind.rsi}
-MACD: ${ind.macd.MACD.toFixed(2)}, Signal: ${ind.macd.signal.toFixed(2)}
-OBV: ${ind.obv}
-`;
-}
-
 // -------------------- START SERVER --------------------
 app.listen(PORT, () => {
-  console.log("Bot ready ✅");
-  console.log(`Server running on port ${PORT}`);
+  console.log("Bot ready 👍");
+  console.log(`Server on port ${PORT}`);
 });

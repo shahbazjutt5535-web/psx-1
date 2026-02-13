@@ -1,5 +1,5 @@
 // -------------------- CONFIG --------------------
-const TELEGRAM_BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"; 
+const TELEGRAM_BOT_TOKEN = "8493857966:AAFURe8TIedYov8XnKzM1L9g_724QQe8LS8"; 
 const PORT = process.env.PORT || 10000;
 
 // Symbols with Yahoo format
@@ -21,8 +21,6 @@ const INTERVALS = {
   "1d": "1d"
 };
 
-const BUFFER_SIZE = 100;
-
 // -------------------- MODULES --------------------
 const axios = require("axios");
 const express = require("express");
@@ -31,8 +29,10 @@ const ti = require("technicalindicators");
 
 // -------------------- SETUP --------------------
 const app = express();
-const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
 app.use(express.json());
+
+// Only polling, no webhook
+const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
 
 // -------------------- HELPERS --------------------
 async function fetchYahoo(symbol, interval) {
@@ -43,6 +43,7 @@ async function fetchYahoo(symbol, interval) {
     const timestamps = data.timestamp;
     const close = data.indicators.quote[0].close;
     const volume = data.indicators.quote[0].volume;
+
     let series = [];
     for (let i = 0; i < timestamps.length; i++) {
       if (close[i] !== null) {
@@ -53,6 +54,7 @@ async function fetchYahoo(symbol, interval) {
         });
       }
     }
+    if (!series.length) throw new Error("No data returned");
     return series;
   } catch (err) {
     throw new Error("Yahoo fetch error");
@@ -120,12 +122,12 @@ OBV: ${indicators.obv}
     bot.sendMessage(chatId, msgText);
 
   } catch (err) {
-    bot.sendMessage(chatId, `❌ Error fetching data.`);
+    bot.sendMessage(chatId, `❌ Cannot fetch data: ${err.message}`);
   }
 });
 
 // -------------------- START SERVER --------------------
 app.listen(PORT, () => {
   console.log("Bot ready 👍");
-  console.log(`Server on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });

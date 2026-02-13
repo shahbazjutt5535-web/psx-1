@@ -1,15 +1,15 @@
 {
-  "name": "psx-alpha-bot",
+  "name": "psx-telegram-indicator-bot",
   "version": "1.0.0",
-  "description": "Telegram bot for PSX indicators using Alpha Vantage",
+  "description": "Telegram bot for PSX indicators",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
   },
   "dependencies": {
-    "axios": "^1.5.0",
+    "axios": "^1.6.3",
     "express": "^4.18.2",
     "node-telegram-bot-api": "^0.61.0",
-    "technicalindicators": "^3.1.0"
+    "technicalindicators": "^3.0.5"
   }
 }

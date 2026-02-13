@@ -6,7 +6,7 @@ const WebSocket = require("ws");
 
 // ================= CONFIG =================
 // Replace this with your actual bot token from @BotFather
-const BOT_TOKEN = "8493857966:AAGZqy8FH3Pvdw1uCs2lhakKRCrv6n_h83E"; 
+const BOT_TOKEN = "8493857966:AAEbHaLyxWy_sAs56Mgd0ZBpn64WY1SKF64"; 
 
 // Check token
 if (!BOT_TOKEN) {

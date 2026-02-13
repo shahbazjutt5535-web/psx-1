@@ -1,12 +1,22 @@
 // -------------------- CONFIG --------------------
-const TELEGRAM_BOT_TOKEN = "8493857966:AAEbHaLyxWy_sAs56Mgd0ZBpn64WY1SKF64"; 
+const TELEGRAM_BOT_TOKEN = "8493857966:AAEbHaLyxWy_sAs56Mgd0ZBpn64WY1SKF64"; // Replace with your Telegram bot token
 const PSX_BASE_URL = "https://psxterminal.com/api/ticks/"; 
 const PSX_WS_URL = "wss://psxterminal.com/"; 
 const PORT = process.env.PORT || 10000; 
-const DOMAIN = "https://your-render-url.onrender.com"; 
+const DOMAIN = "https://psx-1.onrender.com"; // Replace with your deployed URL
 
 // Supported symbols
 const SYMBOLS = ["MZNPETF", "NITETF", "FFC", "ENGRO", "PTL", "HUBC"];
+
+// Map symbol to market type
+const SYMBOL_MARKET = {
+  "FFC": "REG",
+  "ENGRO": "REG",
+  "HUBC": "REG",
+  "PTL": "REG",
+  "MZNPETF": "IDX",
+  "NITETF": "IDX"
+};
 
 // Supported intervals
 const INTERVALS = ["10m","15m","30m","1h","4h","12h","1d"];
@@ -30,17 +40,19 @@ app.post(`/bot${TELEGRAM_BOT_TOKEN}`, (req, res) => {
   res.sendStatus(200);
 });
 
+// Command /start
 bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(msg.chat.id, "PSX Indicator Bot 🤖\nUse: /price SYMBOL INTERVAL");
+  bot.sendMessage(msg.chat.id, "PSX Indicator Bot 🤖\nUse: /price SYMBOL INTERVAL\nExample: /price FFC 15m");
 });
 
+// Command /price SYMBOL INTERVAL
 bot.onText(/\/price (.+) (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const symbol = match[1].toUpperCase();
   const interval = match[2].toLowerCase();
 
   if (!SYMBOLS.includes(symbol) || !INTERVALS.includes(interval)) {
-    return bot.sendMessage(chatId, `Invalid symbol or interval.`);
+    return bot.sendMessage(chatId, `❌ Invalid symbol or interval.\nSupported symbols: ${SYMBOLS.join(", ")}\nIntervals: ${INTERVALS.join(", ")}`);
   }
 
   bot.sendMessage(chatId, `Fetching ${symbol} (${interval})...`);
@@ -51,24 +63,31 @@ bot.onText(/\/price (.+) (.+)/, async (msg, match) => {
     const response = formatIndicatorMessage(symbol, interval, indicators);
     bot.sendMessage(chatId, response);
   } catch (err) {
-    bot.sendMessage(chatId, `Error: ${err.message}`);
+    bot.sendMessage(chatId, `❌ Cannot fetch data currently: ${err.message}`);
   }
 });
 
+// Fetch latest price from PSX Terminal
 async function fetchPSX(symbol) {
   try {
-    const res = await axios.get(`${PSX_BASE_URL}REG/${symbol}`);
-    if (!res.data || !res.data.price) throw new Error("No data");
+    const market = SYMBOL_MARKET[symbol] || "REG";
+    const res = await axios.get(`${PSX_BASE_URL}${market}/${symbol}`);
+    if (!res.data || !res.data.price) {
+      console.log(`No price returned for ${symbol}`);
+      return { price: null, volume: null };
+    }
     return res.data;
   } catch (err) {
     console.log("PSX API error:", err.message);
-    return null;
+    return { price: null, volume: null };
   }
 }
 
+// Calculate indicators safely
 function calculateIndicators(data) {
-  const price = parseFloat(data.price);
-  const simpleSeries = [price, price, price, price, price, price, price, price]; // dummy series
+  const price = parseFloat(data.price) || 100; // fallback price
+  const volume = parseFloat(data.volume) || 1; // fallback volume
+  const simpleSeries = Array(8).fill(price); // dummy series for indicators
 
   return {
     price: price,
@@ -81,10 +100,11 @@ function calculateIndicators(data) {
       slowPeriod: 26,
       signalPeriod: 9
     }).pop() || { MACD: 0, signal: 0, histogram: 0 },
-    obv: ti.OBV.calculate({ close: simpleSeries, volume: new Array(simpleSeries.length).fill(data.volume || 1) }).pop() || 0
+    obv: ti.OBV.calculate({ close: simpleSeries, volume: new Array(simpleSeries.length).fill(volume) }).pop() || 0
   };
 }
 
+// Format message to Telegram
 function formatIndicatorMessage(symbol, interval, ind) {
   return `
 📊 ${symbol} (${interval})
@@ -92,19 +112,19 @@ Price: ${ind.price}
 SMA: ${ind.sma}
 EMA: ${ind.ema}
 RSI: ${ind.rsi}
-MACD: ${ind.macd.MACD}, signal ${ind.macd.signal}
+MACD: ${ind.macd.MACD}, Signal: ${ind.macd.signal}
 OBV: ${ind.obv}
 `;
 }
 
-// Optional WebSocket connection
+// Optional WebSocket connection to keep alive
 function initWebSocket() {
   const ws = new WebSocket(PSX_WS_URL);
 
   ws.on("open", () => console.log("WebSocket connected"));
   ws.on("error", (e) => console.log("WebSocket error:", e.message));
   ws.on("close", () => {
-    console.log("WS disconnected, reconnecting...");
+    console.log("WebSocket disconnected, reconnecting in 5s...");
     setTimeout(initWebSocket, 5000);
   });
 }
@@ -112,6 +132,6 @@ initWebSocket();
 
 // Start web server
 app.listen(PORT, () => {
-  console.log("Bot ready");
+  console.log("Bot ready ✅");
   console.log(`Server running on port ${PORT}`);
 });

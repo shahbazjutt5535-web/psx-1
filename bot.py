@@ -1,6 +1,6 @@
 """
 PSX Stock Indicator Telegram Bot
-FINAL VERSION - With /text command and no signal summary
+FINAL VERSION - With fixed Meezan ETF and Final Signal Summary text
 """
 
 import os
@@ -119,7 +119,7 @@ interval_map = {
     "1w": Interval.in_weekly,
 }
 
-# PSX Stocks - Updated with TradingView symbols
+# PSX Stocks - Updated with correct TradingView symbols
 stocks = [
     {"symbol": "FFC", "name": "Fauji Fertilizer Company", "tv_symbol": "PSX:FFC"},
     {"symbol": "ENGROH", "name": "Engro Holdings", "tv_symbol": "PSX:ENGROH"},
@@ -128,12 +128,22 @@ stocks = [
     {"symbol": "PPL", "name": "Pakistan Petroleum Limited", "tv_symbol": "PSX:PPL"},
     {"symbol": "NBP", "name": "National Bank of Pakistan", "tv_symbol": "PSX:NBP"},
     {"symbol": "UBL", "name": "United Bank Limited", "tv_symbol": "PSX:UBL"},
-    {"symbol": "MEZNPETF", "name": "Meezan Pakistan ETF", "tv_symbol": "PSX:MEZNPETF"},
+    {"symbol": "MEZNPETF", "name": "Meezan Pakistan ETF", "tv_symbol": "PSX:MEZNPETF"},  # This is correct
     {"symbol": "NBPGETF", "name": "NBP Pakistan Growth ETF", "tv_symbol": "PSX:NBPGETF"},
     {"symbol": "KEL", "name": "K-Electric", "tv_symbol": "PSX:KEL"},
     {"symbol": "SYS", "name": "Systems Limited", "tv_symbol": "PSX:SYS"},
     {"symbol": "LUCK", "name": "Lucky Cement", "tv_symbol": "PSX:LUCK"},
     {"symbol": "PSO", "name": "Pakistan State Oil", "tv_symbol": "PSX:PSO"},
+]
+
+# Alternative Meezan ETF symbols if the above doesn't work
+# Some ETFs might be listed differently on TradingView
+meezan_alternatives = [
+    "PSX:MEZNPETF",
+    "PSX:MEZN", 
+    "PSX:MEEZAN",
+    "PSX:MEZNP",
+    "MEZNPETF",
 ]
 
 # Gold symbol
@@ -346,8 +356,32 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             
             # Validate data
             if df is None or df.empty:
-                await update.message.reply_text(f"No data found for {name}.")
-                return
+                # If Meezan ETF fails, try alternative symbols
+                if symbol == "MEZNPETF":
+                    await update.message.reply_text(f"Trying alternative symbol for {name}...")
+                    for alt_sym in meezan_alternatives:
+                        try:
+                            if ':' in alt_sym:
+                                alt_exchange, alt_symbol = alt_sym.split(':')
+                            else:
+                                alt_exchange = "PSX"
+                                alt_symbol = alt_sym
+                            
+                            df = tv.get_hist(
+                                symbol=alt_symbol,
+                                exchange=alt_exchange,
+                                interval=interval_map[interval_key],
+                                n_bars=300
+                            )
+                            if df is not None and not df.empty:
+                                await update.message.reply_text(f"Found data using symbol: {alt_sym}")
+                                break
+                        except:
+                            continue
+                
+                if df is None or df.empty:
+                    await update.message.reply_text(f"No data found for {name}. The symbol might not be available on TradingView.")
+                    return
             
             if len(df) < 200:
                 await update.message.reply_text(f"Insufficient data for {name}. Only {len(df)} bars available. Some indicators may not calculate.")
@@ -374,7 +408,7 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             else:
                 change_sign = "="
             
-            # Format message with all indicators (NO SIGNAL SUMMARY AT THE END)
+            # Format message with all indicators
             message = (
                 f"📊 {name} - {tv_symbol} ({interval_key})\n"
                 f"━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -549,7 +583,8 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
                 f"📊 Donchian Channel (20):\n"
                 f" - Upper: {format_value(last['DC_UPPER'])}\n"
                 f" - Middle: {format_value(last['DC_MIDDLE'])}\n"
-                f" - Lower: {format_value(last['DC_LOWER'])}"
+                f" - Lower: {format_value(last['DC_LOWER'])}\n\n"
+                f"📍 Final Signal Summary"
             )
             
             # Split message if too long
@@ -617,7 +652,7 @@ telegram_app = ApplicationBuilder()\
 # Add commands
 telegram_app.add_handler(CommandHandler("start", start_command))
 telegram_app.add_handler(CommandHandler("ping", ping_command))
-telegram_app.add_handler(CommandHandler("text", text_command))  # Add the text command
+telegram_app.add_handler(CommandHandler("text", text_command))
 logger.info("Added commands: /start, /ping, /text")
 
 # Add all stock commands

@@ -1,122 +1,202 @@
 import pandas as pd
 import numpy as np
-from tvDatafeed import TvDatafeed, Interval
 
-# ---------------------------
-# Helper indicator functions
-# ---------------------------
-def EMA(data, period=14):
-    return data['close'].ewm(span=period, adjust=False).mean()
+# -----------------------------
+# Moving Averages
+# -----------------------------
 
-def SMA(data, period=14):
-    return data['close'].rolling(window=period).mean()
+def SMA(series, period):
+    return series.rolling(period).mean()
 
-def RSI(data, period=14):
-    delta = data['close'].diff()
+def EMA(series, period):
+    return series.ewm(span=period, adjust=False).mean()
+
+def WMA(series, period):
+    weights = np.arange(1, period+1)
+    return series.rolling(period).apply(lambda prices: np.dot(prices, weights)/weights.sum(), raw=True)
+
+def HMA(series, period):
+    half = int(period/2)
+    sqrt = int(np.sqrt(period))
+    wma1 = WMA(series, half)
+    wma2 = WMA(series, period)
+    return WMA(2*wma1 - wma2, sqrt)
+
+# -----------------------------
+# RSI
+# -----------------------------
+
+def RSI(series, period=14):
+    delta = series.diff()
     gain = delta.clip(lower=0)
-    loss = -1 * delta.clip(upper=0)
-    avg_gain = gain.rolling(window=period).mean()
-    avg_loss = loss.rolling(window=period).mean()
+    loss = -delta.clip(upper=0)
+
+    avg_gain = gain.rolling(period).mean()
+    avg_loss = loss.rolling(period).mean()
+
     rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
+    return 100 - (100/(1+rs))
 
-def MACD(data, fast=12, slow=26, signal=9):
-    exp1 = data['close'].ewm(span=fast, adjust=False).mean()
-    exp2 = data['close'].ewm(span=slow, adjust=False).mean()
-    macd = exp1 - exp2
-    signal_line = macd.ewm(span=signal, adjust=False).mean()
-    return macd, signal_line
+# -----------------------------
+# MACD
+# -----------------------------
 
-def Bollinger_Bands(data, period=20):
-    sma = SMA(data, period)
-    std = data['close'].rolling(period).std()
-    upper = sma + (2 * std)
-    lower = sma - (2 * std)
-    return upper, lower
+def MACD(series, fast=12, slow=26, signal=9):
+    ema_fast = EMA(series, fast)
+    ema_slow = EMA(series, slow)
 
-def ATR(data, period=14):
-    high_low = data['high'] - data['low']
-    high_close = np.abs(data['high'] - data['close'].shift())
-    low_close = np.abs(data['low'] - data['close'].shift())
-    tr = high_low.combine(high_close, max).combine(low_close, max)
-    atr = tr.rolling(period).mean()
-    return atr
+    macd = ema_fast - ema_slow
+    signal_line = EMA(macd, signal)
 
-def Stochastic(data, k_period=14, d_period=3):
-    low_min = data['low'].rolling(k_period).min()
-    high_max = data['high'].rolling(k_period).max()
-    k = 100 * ((data['close'] - low_min) / (high_max - low_min))
-    d = k.rolling(d_period).mean()
-    return k, d
+    hist = macd - signal_line
 
-# ---------------------------
-# Calculate all indicators for a given symbol
-# ---------------------------
-def calculate_all(tv: TvDatafeed, symbol="PSX:KSE100", interval=Interval.in_daily, n=100):
-    """
-    Fetch latest n candles from TradingView and calculate signals
-    """
-    try:
-        df = tv.get_hist(symbol=symbol, interval=interval, n=n)
-        if df.empty:
-            return "No data available for symbol."
+    return macd, signal_line, hist
 
-        signals = []
+# -----------------------------
+# ATR
+# -----------------------------
 
-        # EMA & SMA signals
-        ema20 = EMA(df, 20).iloc[-1]
-        ema50 = EMA(df, 50).iloc[-1]
-        sma20 = SMA(df, 20).iloc[-1]
+def ATR(df, period=14):
 
-        if ema20 > ema50:
-            signals.append("EMA20 > EMA50 ✅ Bullish")
+    high_low = df['high'] - df['low']
+    high_close = abs(df['high'] - df['close'].shift())
+    low_close = abs(df['low'] - df['close'].shift())
+
+    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+
+    return tr.rolling(period).mean()
+
+# -----------------------------
+# Bollinger Bands
+# -----------------------------
+
+def bollinger(series, period=20):
+
+    mid = SMA(series, period)
+    std = series.rolling(period).std()
+
+    upper = mid + 2*std
+    lower = mid - 2*std
+
+    return upper, mid, lower
+
+# -----------------------------
+# Stochastic RSI
+# -----------------------------
+
+def stochastic_rsi(series, period=14, smoothK=3, smoothD=3):
+
+    rsi = RSI(series, period)
+
+    min_rsi = rsi.rolling(period).min()
+    max_rsi = rsi.rolling(period).max()
+
+    stoch = (rsi - min_rsi)/(max_rsi-min_rsi)
+
+    K = stoch.rolling(smoothK).mean()*100
+    D = K.rolling(smoothD).mean()
+
+    return K, D
+
+# -----------------------------
+# Williams %R
+# -----------------------------
+
+def williams_r(df, period=14):
+
+    high = df['high'].rolling(period).max()
+    low = df['low'].rolling(period).min()
+
+    return -100 * (high - df['close'])/(high-low)
+
+# -----------------------------
+# CCI
+# -----------------------------
+
+def CCI(df, period=20):
+
+    tp = (df['high'] + df['low'] + df['close'])/3
+
+    sma = tp.rolling(period).mean()
+
+    mad = tp.rolling(period).apply(lambda x: np.mean(np.abs(x-np.mean(x))))
+
+    return (tp-sma)/(0.015*mad)
+
+# -----------------------------
+# ROC
+# -----------------------------
+
+def ROC(series, period=12):
+
+    return ((series-series.shift(period))/series.shift(period))*100
+
+# -----------------------------
+# Momentum
+# -----------------------------
+
+def MOM(series, period=10):
+
+    return series-series.shift(period)
+
+# -----------------------------
+# OBV
+# -----------------------------
+
+def OBV(df):
+
+    obv=[0]
+
+    for i in range(1,len(df)):
+
+        if df['close'][i]>df['close'][i-1]:
+            obv.append(obv[-1]+df['volume'][i])
+
+        elif df['close'][i]<df['close'][i-1]:
+            obv.append(obv[-1]-df['volume'][i])
+
         else:
-            signals.append("EMA20 < EMA50 ❌ Bearish")
+            obv.append(obv[-1])
 
-        if df['close'].iloc[-1] > sma20:
-            signals.append("Price above SMA20 ✅")
+    return pd.Series(obv,index=df.index)
+
+# -----------------------------
+# Money Flow Index
+# -----------------------------
+
+def MFI(df, period=14):
+
+    tp=(df['high']+df['low']+df['close'])/3
+    mf=tp*df['volume']
+
+    positive=[]
+    negative=[]
+
+    for i in range(1,len(tp)):
+
+        if tp[i]>tp[i-1]:
+            positive.append(mf[i])
+            negative.append(0)
+
         else:
-            signals.append("Price below SMA20 ❌")
+            positive.append(0)
+            negative.append(mf[i])
 
-        # MACD
-        macd, signal_line = MACD(df)
-        if macd.iloc[-1] > signal_line.iloc[-1]:
-            signals.append("MACD bullish crossover ✅")
-        else:
-            signals.append("MACD bearish crossover ❌")
+    pos=pd.Series(positive).rolling(period).sum()
+    neg=pd.Series(negative).rolling(period).sum()
 
-        # RSI
-        rsi_val = RSI(df).iloc[-1]
-        if rsi_val > 70:
-            signals.append(f"RSI: {rsi_val:.2f} ❌ Overbought")
-        elif rsi_val < 30:
-            signals.append(f"RSI: {rsi_val:.2f} ✅ Oversold")
-        else:
-            signals.append(f"RSI: {rsi_val:.2f} Neutral")
+    mfr=pos/neg
 
-        # Bollinger Bands
-        upper, lower = Bollinger_Bands(df)
-        close_price = df['close'].iloc[-1]
-        if close_price > upper.iloc[-1]:
-            signals.append(f"Price above upper BB ❌ Overbought")
-        elif close_price < lower.iloc[-1]:
-            signals.append(f"Price below lower BB ✅ Oversold")
-        else:
-            signals.append("Price within Bollinger Bands")
+    return 100-(100/(1+mfr))
 
-        # ATR
-        atr_val = ATR(df).iloc[-1]
-        signals.append(f"ATR(14): {atr_val:.2f}")
+# -----------------------------
+# VWAP
+# -----------------------------
 
-        # Stochastic
-        k, d = Stochastic(df)
-        if k.iloc[-1] > d.iloc[-1]:
-            signals.append("Stochastic bullish ✅")
-        else:
-            signals.append("Stochastic bearish ❌")
+def VWAP(df):
 
-        return "\n".join(signals)
+    tp=(df['high']+df['low']+df['close'])/3
 
-    except Exception as e:
-        return f"Error calculating indicators: {e}"
+    vwap=(tp*df['volume']).cumsum()/df['volume'].cumsum()
+
+    return vwap

@@ -1,6 +1,6 @@
 """
 PSX Stock Indicator Telegram Bot
-FINAL VERSION - Without any emojis
+FINAL VERSION - With updated /start command and Final Signal Summary
 """
 
 import os
@@ -138,6 +138,76 @@ gold = {"symbol": "GOLD", "name": "Gold", "tv_symbol": "TVC:GOLD"}
 
 # Combine all symbols
 all_symbols = stocks + [gold]
+
+# -------------------------
+# Helper function to get signal summary
+# -------------------------
+def get_signal_summary(last):
+    """Generate final signal summary based on indicators"""
+    signals = []
+    
+    # RSI Signal
+    if not pd.isna(last.get('RSI_14')):
+        if last['RSI_14'] > 70:
+            signals.append("⚠️ RSI: Overbought")
+        elif last['RSI_14'] < 30:
+            signals.append("✅ RSI: Oversold (Potential Buy)")
+        else:
+            signals.append("⚪ RSI: Neutral")
+    
+    # MACD Signal
+    if not pd.isna(last.get('MACD_12_26_9')) and not pd.isna(last.get('MACD_SIGNAL_12_26_9')):
+        if last['MACD_12_26_9'] > last['MACD_SIGNAL_12_26_9']:
+            signals.append("🟢 MACD: Bullish")
+        else:
+            signals.append("🔴 MACD: Bearish")
+    
+    # Bollinger Signal
+    if not pd.isna(last.get('close')) and not pd.isna(last.get('BB_UPPER')) and not pd.isna(last.get('BB_LOWER')):
+        if last['close'] > last['BB_UPPER']:
+            signals.append("⚠️ Price above BB: Overextended")
+        elif last['close'] < last['BB_LOWER']:
+            signals.append("✅ Price below BB: Potential Reversal")
+    
+    # ADX Signal
+    if not pd.isna(last.get('ADX_14')):
+        if last['ADX_14'] > 25:
+            signals.append(f"📊 Strong Trend (ADX: {last['ADX_14']:.1f})")
+        else:
+            signals.append(f"📊 Weak Trend (ADX: {last['ADX_14']:.1f})")
+    
+    # Moving Average Signals
+    if not pd.isna(last.get('close')) and not pd.isna(last.get('SMA_20')):
+        if last['close'] > last['SMA_20']:
+            signals.append("🟢 Price above SMA20")
+        else:
+            signals.append("🔴 Price below SMA20")
+    
+    if not pd.isna(last.get('close')) and not pd.isna(last.get('EMA_9')):
+        if last['close'] > last['EMA_9']:
+            signals.append("🟢 Price above EMA9")
+        else:
+            signals.append("🔴 Price below EMA9")
+    
+    # Stochastic Signal
+    if not pd.isna(last.get('STOCH_RSI_K')) and not pd.isna(last.get('STOCH_RSI_D')):
+        if last['STOCH_RSI_K'] > last['STOCH_RSI_D'] and last['STOCH_RSI_K'] < 20:
+            signals.append("✅ Stochastic: Bullish Crossover (Oversold)")
+        elif last['STOCH_RSI_K'] < last['STOCH_RSI_D'] and last['STOCH_RSI_K'] > 80:
+            signals.append("⚠️ Stochastic: Bearish Crossover (Overbought)")
+    
+    # MFI Signal
+    if not pd.isna(last.get('MFI_14')):
+        if last['MFI_14'] > 80:
+            signals.append("⚠️ MFI: Overbought")
+        elif last['MFI_14'] < 20:
+            signals.append("✅ MFI: Oversold")
+    
+    # If no signals
+    if not signals:
+        return "No clear signals at this time."
+    
+    return "\n".join(signals[:5])  # Return top 5 signals to keep it concise
 
 # -------------------------
 # Main indicator calculation function
@@ -371,6 +441,9 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             else:
                 change_sign = "="
             
+            # Get signal summary
+            signal_summary = get_signal_summary(last)
+            
             # Format message with all indicators
             message = (
                 f"📊 {name} - {tv_symbol} ({interval_key})\n"
@@ -546,7 +619,10 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
                 f"📊 Donchian Channel (20):\n"
                 f" - Upper: {format_value(last['DC_UPPER'])}\n"
                 f" - Middle: {format_value(last['DC_MIDDLE'])}\n"
-                f" - Lower: {format_value(last['DC_LOWER'])}"
+                f" - Lower: {format_value(last['DC_LOWER'])}\n\n"
+                f"\n"
+                f"📍 Final Signal Summary\n"
+                f"{signal_summary}"
             )
             
             # Split message if too long
@@ -565,54 +641,22 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
     return command
 
 # -------------------------
-# Start/Ping Commands
+# Start/Ping Commands - UPDATED
 # -------------------------
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command with comprehensive help"""
+    """Handle /start command with simple response"""
     
     # Calculate ping response time
     start_time = time.time()
-    msg = await update.message.reply_text("Checking bot status...")
+    msg = await update.message.reply_text("Checking...")
     end_time = time.time()
     ping_time = round((end_time - start_time) * 1000, 2)
     
-    # Create stocks table
-    stocks_table = "| Company | TradingView Symbol |\n"
-    stocks_table += "| ------- | ------------------ |\n"
-    for stock in stocks:
-        stocks_table += f"| {stock['name']} | {stock['tv_symbol']} |\n"
-    stocks_table += f"| {gold['name']} | {gold['tv_symbol']} |\n"
-    
-    help_text = (
-        f"Your Bot is working! \n"
-        f"Ping response time: {ping_time}ms\n\n"
-        
-        f"PSX Stock Indicator Bot\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n\n"
-        
-        f"TEST COMMANDS (Verify bot works):\n"
-        f"/start - Check if bot is responding and check response time\n\n"
-        
-        f"Available Stocks:\n"
-        f"{stocks_table}\n\n"
-        
-        f"Timeframes: 15m, 30m, 1h, 2h, 4h, 1d, 1w\n\n"
-        
-        f"Example Commands:\n"
-        f"/ffc_15m - FFC 15min\n"
-        f"/ogdc_1h - OGDC 1hour\n"
-        f"/hubc_4h - HUBC 4hour\n"
-        f"/engroh_1d - ENGROH Daily\n"
-        f"/gold_1d - Gold Daily\n\n"
-        
-        f"Indicators:\n"
-        f"All Major Indicators (50+ indicators including RSI, MACD, Bollinger Bands, Ichimoku, Fibonacci, etc.)\n\n"
-        
-        f"Note: First request may take 10-15 seconds due to data fetching.\n"
-        f"Each command returns comprehensive technical analysis with 50+ indicators."
+    # Simple response with just the required text
+    await msg.edit_text(
+        f"Your PSX Bot is working! ✅\n"
+        f"Ping response time: {ping_time}ms"
     )
-    
-    await msg.edit_text(help_text)
 
 async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Simple ping command"""

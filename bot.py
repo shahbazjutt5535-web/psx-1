@@ -1,6 +1,6 @@
 """
 PSX Stock Indicator Telegram Bot
-FINAL VERSION - With fixed Meezan ETF and Final Signal Summary text
+FINAL VERSION - With correct Meezan ETF symbol
 """
 
 import os
@@ -128,7 +128,7 @@ stocks = [
     {"symbol": "PPL", "name": "Pakistan Petroleum Limited", "tv_symbol": "PSX:PPL"},
     {"symbol": "NBP", "name": "National Bank of Pakistan", "tv_symbol": "PSX:NBP"},
     {"symbol": "UBL", "name": "United Bank Limited", "tv_symbol": "PSX:UBL"},
-    {"symbol": "MEZNPETF", "name": "Meezan Pakistan ETF", "tv_symbol": "PSX:MEZNPETF"},  # This is correct
+    {"symbol": "MZNPETF", "name": "Meezan Pakistan ETF", "tv_symbol": "PSX:MZNPETF"},  # Corrected symbol
     {"symbol": "NBPGETF", "name": "NBP Pakistan Growth ETF", "tv_symbol": "PSX:NBPGETF"},
     {"symbol": "KEL", "name": "K-Electric", "tv_symbol": "PSX:KEL"},
     {"symbol": "SYS", "name": "Systems Limited", "tv_symbol": "PSX:SYS"},
@@ -137,13 +137,11 @@ stocks = [
 ]
 
 # Alternative Meezan ETF symbols if the above doesn't work
-# Some ETFs might be listed differently on TradingView
 meezan_alternatives = [
-    "PSX:MEZNPETF",
-    "PSX:MEZN", 
+    "PSX:MZNPETF",
+    "PSX:MEZNPETF", 
     "PSX:MEEZAN",
-    "PSX:MEZNP",
-    "MEZNPETF",
+    "PSX:MZNP",
 ]
 
 # Gold symbol
@@ -357,7 +355,7 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             # Validate data
             if df is None or df.empty:
                 # If Meezan ETF fails, try alternative symbols
-                if symbol == "MEZNPETF":
+                if symbol == "MZNPETF":
                     await update.message.reply_text(f"Trying alternative symbol for {name}...")
                     for alt_sym in meezan_alternatives:
                         try:

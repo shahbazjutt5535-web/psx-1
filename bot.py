@@ -1,13 +1,6 @@
 """
 PSX Stock Indicator Telegram Bot
-Compatible with:
-- Python 3.11.9
-- python-telegram-bot==20.3
-- pandas==2.1.4
-- numpy==1.24.4
-- httpx==0.24.0
-- Flask==2.3.3
-- nest_asyncio==1.6.0
+Compatible with Python 3.11.9
 """
 
 import os
@@ -25,12 +18,10 @@ from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
 
-# Apply nest_asyncio for Render deployment
+# Apply nest_asyncio
 nest_asyncio.apply()
 
-# -------------------------
 # Patch input() before importing tvDatafeed
-# -------------------------
 import builtins
 original_input = builtins.input
 builtins.input = lambda prompt='': 'y'
@@ -69,33 +60,28 @@ if not BOT_TOKEN:
 # TradingView Initialization
 # -------------------------
 def init_tvdatafeed():
-    """Initialize TvDatafeed with multiple fallback methods"""
-    
-    # Method 1: Simple initialization
+    """Initialize TvDatafeed"""
     try:
         tv = TvDatafeed()
         logger.info("✅ TvDatafeed initialized successfully")
         return tv
     except Exception as e:
-        logger.warning(f"Method 1 failed: {e}")
+        logger.warning(f"Standard init failed: {e}")
     
-    # Method 2: With auto_login=False
     try:
         tv = TvDatafeed(auto_login=False)
         logger.info("✅ TvDatafeed initialized with auto_login=False")
         return tv
     except Exception as e:
-        logger.warning(f"Method 2 failed: {e}")
+        logger.warning(f"Auto login false failed: {e}")
     
-    # Method 3: Explicit None credentials
     try:
         tv = TvDatafeed(username=None, password=None)
         logger.info("✅ TvDatafeed initialized with None credentials")
         return tv
     except Exception as e:
-        logger.warning(f"Method 3 failed: {e}")
+        logger.warning(f"None credentials failed: {e}")
     
-    # If all methods fail
     raise Exception("❌ All TvDatafeed initialization methods failed")
 
 # Initialize TvDatafeed
@@ -118,7 +104,7 @@ interval_map = {
     "1w": Interval.in_weekly,
 }
 
-# Expanded PSX Stocks with TradingView symbols
+# PSX Stocks with TradingView symbols
 stocks = [
     {"symbol": "FFC", "name": "Fauji Fertilizer Company", "tv_symbol": "PSX:FFC"},
     {"symbol": "ENGROH", "name": "Engro Holdings", "tv_symbol": "PSX:ENGROH"},
@@ -137,10 +123,10 @@ stocks = [
 ]
 
 # -------------------------
-# Format number helper
+# Format Helpers
 # -------------------------
 def format_number(value):
-    """Format number to 2 decimal places if not NaN"""
+    """Format number to 2 decimal places"""
     if pd.isna(value) or value is None:
         return "N/A"
     if isinstance(value, (int, float)):
@@ -164,24 +150,21 @@ def format_percent(value):
     return f"{value:.2f}%"
 
 # -------------------------
-# Command Generator with Complete Indicators - Clean Output
+# Command Generator
 # -------------------------
 def create_stock_command(stock_info, interval_key):
-    """Create a command handler with complete indicators - clean output only values"""
+    """Create a command handler for stock indicators"""
     symbol = stock_info["symbol"]
     tv_symbol = stock_info["tv_symbol"]
     company_name = stock_info["name"]
     
     async def command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # Send immediate acknowledgment
-        await update.message.reply_text(f"⏳ Fetching {company_name} ({interval_key}) data... This may take 10-15 seconds.")
+        await update.message.reply_text(f"⏳ Fetching {company_name} ({interval_key}) data...")
         
         try:
-            # Run in thread pool with timeout
             loop = asyncio.get_event_loop()
             
             try:
-                # Fetch data with timeout
                 df = await asyncio.wait_for(
                     loop.run_in_executor(
                         None,
@@ -194,11 +177,9 @@ def create_stock_command(stock_info, interval_key):
                     timeout=25.0
                 )
             except asyncio.TimeoutError:
-                logger.error(f"Timeout fetching {symbol} {interval_key}")
                 await update.message.reply_text(f"❌ Request timed out. Please try again.")
                 return
             
-            # Validate data
             if df is None or df.empty:
                 await update.message.reply_text(f"❌ No data found for {company_name}.")
                 return
@@ -207,7 +188,6 @@ def create_stock_command(stock_info, interval_key):
                 await update.message.reply_text(f"⚠️ Insufficient data. Only {len(df)} bars available.")
                 return
             
-            # Calculate all indicators
             # Market Overview
             current_price = df['close'].iloc[-1]
             open_price = df['open'].iloc[-1]
@@ -339,7 +319,7 @@ def create_stock_command(stock_info, interval_key):
             # Donchian Channel
             donchian_upper, donchian_middle, donchian_lower = Donchian_Channel(df, 20)
             
-            # Format the complete message - CLEAN VERSION (only values)
+            # Build message
             message = (
                 f"📊 *{company_name} - {tv_symbol} ({interval_key})*\n\n"
                 
@@ -519,14 +499,12 @@ def create_stock_command(stock_info, interval_key):
                 f"📍 *Final Signal Summary*\n"
             )
             
-            # Split message if too long (Telegram has 4096 char limit)
+            # Split message if too long
             if len(message) > 4000:
-                # Send first part
                 part1 = message[:4000]
                 part1 = part1[:part1.rfind('\n')]
                 await update.message.reply_text(part1, parse_mode='Markdown')
                 
-                # Send second part
                 part2 = message[len(part1):]
                 if part2:
                     await update.message.reply_text(part2, parse_mode='Markdown')
@@ -540,32 +518,19 @@ def create_stock_command(stock_info, interval_key):
     return command
 
 # -------------------------
-# Start Command with Updated Format
+# Start Command
 # -------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command with complete stock list"""
-    
-    # Calculate ping response time
+    """Handle /start command"""
     start_time = time.time()
     msg = await update.message.reply_text("⚡")
     end_time = time.time()
     latency = round((end_time - start_time) * 1000, 2)
     await msg.delete()
     
-    # Create stock table
     stock_table = ""
     for stock in stocks:
         stock_table += f"| {stock['name']:<30} | {stock['tv_symbol']:<18} |\n"
-    
-    # Create timeframe list
-    timeframes = "15m, 30m, 1h, 2h, 4h, 1d, 1w"
-    
-    # Create example commands
-    example_commands = ""
-    example_stocks = stocks[:5]  # First 5 stocks as examples
-    for stock in example_stocks:
-        symbol_lower = stock['symbol'].lower()
-        example_commands += f"/{symbol_lower}_15m - {stock['name']} 15min\n"
     
     help_text = (
         f"🔥 *PSX Stock Indicator Bot*\n"
@@ -580,10 +545,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"{stock_table}"
         f"also GOLD\n\n"
         
-        f"*Timeframes:* {timeframes}\n\n"
+        f"*Timeframes:* 15m, 30m, 1h, 2h, 4h, 1d, 1w\n\n"
         
         f"*Example Commands:*\n"
-        f"{example_commands}"
+        f"/ffc_15m - FFC 15min\n"
+        f"/ogdc_1h - OGDC 1hour\n"
+        f"/hubc_4h - HUBC 4hour\n"
         f"/engroh_1d - ENGRO Daily\n\n"
         
         f"*Indicators:*\n"
@@ -598,7 +565,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Ping Command
 # -------------------------
 async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Ping command to check latency"""
+    """Ping command"""
     start_time = time.time()
     msg = await update.message.reply_text("🏓 Pong!")
     end_time = time.time()
@@ -610,25 +577,19 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # -------------------------
 telegram_app = Application.builder().token(BOT_TOKEN).concurrent_updates(True).build()
 
-# Add test commands
+# Add commands
 telegram_app.add_handler(CommandHandler("ping", ping_command))
-logger.info(f"✅ Added test command: /ping")
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(CommandHandler("help", start))
 
-# Add all stock commands
+# Add stock commands
 for stock in stocks:
     for interval_key in interval_map.keys():
         cmd_name = f"{stock['symbol'].lower()}_{interval_key}"
         telegram_app.add_handler(CommandHandler(cmd_name, create_stock_command(stock, interval_key)))
         logger.info(f"✅ Added command: /{cmd_name}")
 
-# Add start command
-telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(CommandHandler("help", start))
-logger.info("✅ Added commands: /start, /help")
-
-# -------------------------
-# Error Handler
-# -------------------------
+# Error handler
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Error: {context.error}")
     if update and update.effective_message:
@@ -658,16 +619,12 @@ def run_flask():
 # -------------------------
 if __name__ == "__main__":
     try:
-        # Start Flask
         flask_thread = threading.Thread(target=run_flask, daemon=True)
         flask_thread.start()
         logger.info(f"✅ Flask server started on port {os.environ.get('PORT', 5000)}")
         
-        # Small delay
         time.sleep(2)
-        
-        # Start Telegram bot
-        logger.info("🚀 Starting Telegram bot with complete indicators...")
+        logger.info("🚀 Starting Telegram bot...")
         telegram_app.run_polling(drop_pending_updates=True)
         
     except KeyboardInterrupt:

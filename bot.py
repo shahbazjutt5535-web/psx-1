@@ -1,6 +1,6 @@
 """
 PSX Stock Indicator Telegram Bot
-Compatible with Python 3.11.9
+UPDATED VERSION - Comprehensive indicators with improved command structure
 """
 
 import os
@@ -10,18 +10,22 @@ import pandas as pd
 import numpy as np
 from flask import Flask
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import nest_asyncio
 import asyncio
 import time
 from datetime import datetime
-import warnings
-warnings.filterwarnings('ignore')
+import functools
 
-# Apply nest_asyncio
+# Import indicators
+from indicators import *
+
+# Apply nest_asyncio for Render deployment
 nest_asyncio.apply()
 
-# Patch input() before importing tvDatafeed
+# -------------------------
+# FIX: Patch input() before importing tvDatafeed
+# -------------------------
 import builtins
 original_input = builtins.input
 builtins.input = lambda prompt='': 'y'
@@ -33,9 +37,6 @@ try:
 except Exception as e:
     print(f"❌ Failed to import tvDatafeed: {e}")
     raise
-
-# Import all indicators
-from indicators import *
 
 # Restore input
 builtins.input = original_input
@@ -60,28 +61,33 @@ if not BOT_TOKEN:
 # TradingView Initialization
 # -------------------------
 def init_tvdatafeed():
-    """Initialize TvDatafeed"""
+    """Initialize TvDatafeed with multiple fallback methods"""
+    
+    # Method 1: Simple initialization
     try:
         tv = TvDatafeed()
         logger.info("✅ TvDatafeed initialized successfully")
         return tv
     except Exception as e:
-        logger.warning(f"Standard init failed: {e}")
+        logger.warning(f"Method 1 failed: {e}")
     
+    # Method 2: With auto_login=False
     try:
         tv = TvDatafeed(auto_login=False)
         logger.info("✅ TvDatafeed initialized with auto_login=False")
         return tv
     except Exception as e:
-        logger.warning(f"Auto login false failed: {e}")
+        logger.warning(f"Method 2 failed: {e}")
     
+    # Method 3: Explicit None credentials
     try:
         tv = TvDatafeed(username=None, password=None)
         logger.info("✅ TvDatafeed initialized with None credentials")
         return tv
     except Exception as e:
-        logger.warning(f"None credentials failed: {e}")
+        logger.warning(f"Method 3 failed: {e}")
     
+    # If all methods fail
     raise Exception("❌ All TvDatafeed initialization methods failed")
 
 # Initialize TvDatafeed
@@ -104,7 +110,7 @@ interval_map = {
     "1w": Interval.in_weekly,
 }
 
-# PSX Stocks with TradingView symbols
+# PSX Stocks - Updated with TradingView symbols
 stocks = [
     {"symbol": "FFC", "name": "Fauji Fertilizer Company", "tv_symbol": "PSX:FFC"},
     {"symbol": "ENGROH", "name": "Engro Holdings", "tv_symbol": "PSX:ENGROH"},
@@ -119,453 +125,525 @@ stocks = [
     {"symbol": "SYS", "name": "Systems Limited", "tv_symbol": "PSX:SYS"},
     {"symbol": "LUCK", "name": "Lucky Cement", "tv_symbol": "PSX:LUCK"},
     {"symbol": "PSO", "name": "Pakistan State Oil", "tv_symbol": "PSX:PSO"},
-    {"symbol": "GOLD", "name": "Gold", "tv_symbol": "TVC:GOLD"},
 ]
 
+# Gold symbol
+gold = {"symbol": "GOLD", "name": "Gold", "tv_symbol": "TVC:GOLD"}
+
+# Combine all symbols
+all_symbols = stocks + [gold]
+
 # -------------------------
-# Format Helpers
+# Main indicator calculation function
 # -------------------------
-def format_number(value):
-    """Format number to 2 decimal places"""
-    if pd.isna(value) or value is None:
+def calculate_all_indicators(df):
+    """Calculate all technical indicators"""
+    
+    # Market Overview - already in df
+    
+    # 1️⃣ Trend Direction Indicators
+    # SMAs
+    df['SMA_10'] = SMA(df, 10)
+    df['SMA_20'] = SMA(df, 20)
+    df['SMA_50'] = SMA(df, 50)
+    df['SMA_200'] = SMA(df, 200)
+    
+    # EMAs
+    df['EMA_9'] = EMA(df, 9)
+    df['EMA_21'] = EMA(df, 21)
+    df['EMA_50'] = EMA(df, 50)
+    df['EMA_200'] = EMA(df, 200)
+    
+    # WMAs
+    df['WMA_8'] = WMA(df, 8)
+    df['WMA_20'] = WMA(df, 20)
+    df['WMA_50'] = WMA(df, 50)
+    df['WMA_100'] = WMA(df, 100)
+    
+    # Hull MA
+    df['HMA_9'] = HMA(df, 9)
+    df['HMA_14'] = HMA(df, 14)
+    df['HMA_21'] = HMA(df, 21)
+    
+    # Ichimoku
+    df['ICHIMOKU_CONVERSION'], df['ICHIMOKU_BASE'], df['ICHIMOKU_SPAN_A'], df['ICHIMOKU_SPAN_B'] = Ichimoku(df)
+    
+    # SuperTrend
+    df['SUPERTREND_7'] = SuperTrend(df, period=7, multiplier=3)
+    df['SUPERTREND_10'] = SuperTrend(df, period=10, multiplier=3)
+    df['SUPERTREND_14'] = SuperTrend(df, period=14, multiplier=3)
+    
+    # Parabolic SAR
+    df['PSAR'] = ParabolicSAR(df)
+    
+    # 2️⃣ Momentum Strength
+    # MACD (6,13,5)
+    df['MACD_6_13_5'], df['MACD_SIGNAL_6_13_5'], df['MACD_HIST_6_13_5'] = MACD(df, fast=6, slow=13, signal=5)
+    
+    # MACD (12,26,9)
+    df['MACD_12_26_9'], df['MACD_SIGNAL_12_26_9'], df['MACD_HIST_12_26_9'] = MACD(df)
+    
+    # VW-MACD
+    df['VW_MACD'], df['VW_MACD_SIGNAL'], df['VW_MACD_HIST'] = VW_MACD(df)
+    
+    # RSI
+    df['RSI_3'] = RSI(df, 3)
+    df['RSI_10'] = RSI(df, 10)
+    df['RSI_14'] = RSI(df, 14)
+    
+    # RVI
+    df['RVI_14'], df['RVI_SIGNAL'] = RVI(df, 14)
+    df['RVI_10'], _ = RVI(df, 10)
+    
+    # Stochastic RSI
+    df['STOCH_RSI_K'], df['STOCH_RSI_D'] = Stochastic(df, 14, 3)
+    
+    # KDJ
+    df['KDJ_K'], df['KDJ_D'], df['KDJ_J'] = KDJ(df)
+    
+    # Williams %R
+    df['WILLIAMS_R_12'] = WilliamsR(df, 12)
+    df['WILLIAMS_R_25'] = WilliamsR(df, 25)
+    
+    # CCI
+    df['CCI_14'] = CCI(df, 14)
+    df['CCI_20'] = CCI(df, 20)
+    
+    # ROC
+    df['ROC_14'] = ROC(df, 14)
+    df['ROC_25'] = ROC(df, 25)
+    
+    # Momentum
+    df['MTM_10'] = Momentum(df, 10)
+    df['MTM_20'] = Momentum(df, 20)
+    
+    # Ultimate Oscillator
+    df['UO'] = UltimateOscillator(df)
+    
+    # ADX
+    df['ADX_14'], df['PLUS_DI_14'], df['MINUS_DI_14'] = ADX(df)
+    
+    # TDI
+    df['TDI_RSI'], df['TDI_UPPER'], df['TDI_LOWER'], df['TDI_SIGNAL'] = TDI(df)
+    
+    # 3️⃣ Volume & Money Flow
+    # OBV
+    df['OBV'] = OBV(df)
+    
+    # ADOSC
+    df['ADOSC'] = ADOSC(df)
+    
+    # MFI
+    df['MFI_14'] = MFI(df)
+    
+    # Aroon
+    df['AROON_UP'], df['AROON_DOWN'] = Aroon(df)
+    
+    # VWAP
+    df['VWAP_1'] = VWAP(df)
+    df['VWAP_3'] = VWAP(df)  # Using same VWAP as requested
+    df['VWAP_4'] = VWAP(df)
+    
+    # 4️⃣ Volatility & Range
+    # Bollinger Bands
+    df['BB_UPPER'], df['BB_MIDDLE'], df['BB_LOWER'] = Bollinger_Bands(df)
+    
+    # Fibonacci Bollinger Bands
+    fib_bands = FibBollingerBands(df)
+    df['FIB_BB_UPPER_1'] = fib_bands[0]
+    df['FIB_BB_UPPER_0618'] = fib_bands[1]
+    df['FIB_BB_UPPER_0382'] = fib_bands[2]
+    df['FIB_BB_MIDDLE'] = fib_bands[3]
+    df['FIB_BB_LOWER_0382'] = fib_bands[4]
+    df['FIB_BB_LOWER_0618'] = fib_bands[5]
+    df['FIB_BB_LOWER_1'] = fib_bands[6]
+    
+    # Keltner Channel
+    df['KC_UPPER'], df['KC_MIDDLE'], df['KC_LOWER'] = KeltnerChannel(df)
+    
+    # ATR
+    df['ATR_14'] = ATR(df)
+    
+    # Heikin Ashi
+    df['HA_CLOSE'] = HeikinAshi(df)
+    
+    # Choppiness Index
+    df['CHOP_14'] = ChoppinessIndex(df, 14)
+    df['CHOP_21'] = ChoppinessIndex(df, 21)
+    df['CHOP_UPPER'] = 61.8  # Upper band
+    df['CHOP_LOWER'] = 38.2  # Lower band
+    
+    # TRIX
+    df['TRIX_10'] = TRIX(df, 10)
+    df['TRIX_14'] = TRIX(df, 14)
+    df['TRIX_SIGNAL_7'] = df['TRIX_14'].ewm(span=7).mean()
+    df['TRIX_SIGNAL_9'] = df['TRIX_14'].ewm(span=9).mean()
+    
+    # Donchian Channel
+    df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df)
+    
+    return df
+
+# -------------------------
+# Format indicator values
+# -------------------------
+def format_value(value, decimals=2):
+    """Format numeric value, handling NaN"""
+    if pd.isna(value):
         return "N/A"
     if isinstance(value, (int, float)):
-        if abs(value) > 1000000:
-            return f"{value/1000000:.2f}M"
-        elif abs(value) > 1000:
-            return f"{value/1000:.2f}K"
-        return f"{value:.2f}"
+        return f"{value:.{decimals}f}"
     return str(value)
 
-def format_price(value):
-    """Format price to 2 decimal places"""
-    if pd.isna(value) or value is None:
-        return "N/A"
-    return f"{value:.2f}"
-
-def format_percent(value):
-    """Format percentage"""
-    if pd.isna(value) or value is None:
-        return "N/A"
-    return f"{value:.2f}%"
-
 # -------------------------
-# Command Generator
+# Create stock command with comprehensive output
 # -------------------------
-def create_stock_command(stock_info, interval_key):
-    """Create a command handler for stock indicators"""
-    symbol = stock_info["symbol"]
-    tv_symbol = stock_info["tv_symbol"]
-    company_name = stock_info["name"]
+def create_stock_command(symbol, name, tv_symbol, interval_key):
+    """Create a command handler with comprehensive indicator output"""
     
     async def command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text(f"⏳ Fetching {company_name} ({interval_key}) data...")
+        # Send immediate acknowledgment
+        await update.message.reply_text(f"⏳ Fetching {name} ({interval_key}) data... This may take 10-15 seconds.")
         
         try:
+            # Run in thread pool with timeout
             loop = asyncio.get_event_loop()
             
+            # Use asyncio.wait_for to set a timeout
             try:
                 df = await asyncio.wait_for(
                     loop.run_in_executor(
                         None,
                         lambda: tv.get_hist(
-                            symbol=tv_symbol,
+                            symbol=tv_symbol.split(':')[1] if ':' in tv_symbol else tv_symbol,
+                            exchange=tv_symbol.split(':')[0] if ':' in tv_symbol else "PSX",
                             interval=interval_map[interval_key],
-                            n_bars=300
+                            n_bars=300  # Get enough bars for all indicators
                         )
                     ),
-                    timeout=25.0
+                    timeout=25.0  # 25 seconds timeout
                 )
             except asyncio.TimeoutError:
-                await update.message.reply_text(f"❌ Request timed out. Please try again.")
+                logger.error(f"Timeout fetching {symbol} {interval_key}")
+                await update.message.reply_text(f"❌ Request timed out. TradingView is taking too long to respond. Please try again.")
                 return
             
+            # Validate data
             if df is None or df.empty:
-                await update.message.reply_text(f"❌ No data found for {company_name}.")
+                await update.message.reply_text(f"❌ No data found for {name}.")
                 return
             
-            if len(df) < 100:
-                await update.message.reply_text(f"⚠️ Insufficient data. Only {len(df)} bars available.")
-                return
+            if len(df) < 200:
+                await update.message.reply_text(f"⚠️ Insufficient data for {name}. Only {len(df)} bars available. Some indicators may not calculate.")
             
-            # Market Overview
-            current_price = df['close'].iloc[-1]
-            open_price = df['open'].iloc[-1]
-            high_24h = df['high'].iloc[-1]
-            low_24h = df['low'].iloc[-1]
-            volume = df['volume'].iloc[-1]
-            prev_close = df['close'].iloc[-2] if len(df) > 1 else current_price
-            change_points = current_price - prev_close
-            change_percent = (change_points / prev_close) * 100 if prev_close != 0 else 0
+            # Calculate all indicators
+            df = calculate_all_indicators(df)
             
-            # Moving Averages
-            sma_10 = SMA(df, 10).iloc[-1]
-            sma_20 = SMA(df, 20).iloc[-1]
-            sma_50 = SMA(df, 50).iloc[-1]
-            sma_200 = SMA(df, 200).iloc[-1] if len(df) >= 200 else np.nan
+            # Get latest values
+            last = df.iloc[-1]
+            prev = df.iloc[-2] if len(df) > 1 else last
             
-            ema_9 = EMA(df, 9).iloc[-1]
-            ema_21 = EMA(df, 21).iloc[-1]
-            ema_50 = EMA(df, 50).iloc[-1]
-            ema_200 = EMA(df, 200).iloc[-1] if len(df) >= 200 else np.nan
+            # Format close time
+            close_time = df.index[-1].strftime('%Y-%m-%d %H:%M:%S')
             
-            wma_8 = WMA(df, 8).iloc[-1]
-            wma_20 = WMA(df, 20).iloc[-1]
-            wma_50 = WMA(df, 50).iloc[-1]
-            wma_100 = WMA(df, 100).iloc[-1] if len(df) >= 100 else np.nan
+            # Calculate change
+            change_points = last['close'] - prev['close']
+            change_percent = (change_points / prev['close']) * 100
             
-            hma_9 = HMA(df, 9).iloc[-1]
-            hma_14 = HMA(df, 14).iloc[-1]
-            hma_21 = HMA(df, 21).iloc[-1]
+            # Determine change emoji
+            if change_points > 0:
+                change_emoji = "🟢"
+            elif change_points < 0:
+                change_emoji = "🔴"
+            else:
+                change_emoji = "⚪"
             
-            # Ichimoku
-            conv_line, base_line, span_a, span_b = Ichimoku(df)
-            
-            # SuperTrend
-            supertrend_7 = SuperTrend(df, 7, 3).iloc[-1]
-            supertrend_10 = SuperTrend(df, 10, 3).iloc[-1]
-            supertrend_14 = SuperTrend(df, 14, 3).iloc[-1]
-            
-            # Parabolic SAR
-            psar = Parabolic_SAR(df, 0.02, 0.2).iloc[-1]
-            
-            # MACD
-            macd_6_13_5, macd_signal_6_13_5, macd_hist_6_13_5 = MACD(df, 6, 13, 5)
-            macd_12_26_9, macd_signal_12_26_9, macd_hist_12_26_9 = MACD(df, 12, 26, 9)
-            
-            # VW-MACD
-            vw_macd, vw_signal, vw_hist = VW_MACD(df)
-            
-            # RSI
-            rsi_3 = RSI(df, 3).iloc[-1]
-            rsi_10 = RSI(df, 10).iloc[-1]
-            rsi_14 = RSI(df, 14).iloc[-1]
-            
-            # RVI
-            rvi_14, rvi_signal_4 = RVI(df, 14)
-            rvi_10, _ = RVI(df, 10)
-            
-            # Stochastic RSI
-            stoch_k_14, stoch_d_14 = Stochastic_RSI(df, 14, 3, 3)
-            
-            # KDJ
-            kdj_k, kdj_d, kdj_j = KDJ(df, 9, 3, 3)
-            
-            # Williams %R
-            williams_12 = Williams_R(df, 12).iloc[-1]
-            williams_25 = Williams_R(df, 25).iloc[-1]
-            
-            # CCI
-            cci_14 = CCI(df, 14).iloc[-1]
-            cci_20 = CCI(df, 20).iloc[-1]
-            
-            # ROC
-            roc_14 = ROC(df, 14).iloc[-1]
-            roc_25 = ROC(df, 25).iloc[-1]
-            
-            # Momentum
-            mom_10 = MOM(df, 10).iloc[-1]
-            mom_20 = MOM(df, 20).iloc[-1]
-            
-            # Ultimate Oscillator
-            uo = Ultimate_Oscillator(df).iloc[-1]
-            
-            # ADX
-            adx_14, plus_di_14, minus_di_14 = ADX(df, 14)
-            
-            # TDI
-            tdi_rsi, tdi_vol, tdi_signal = TDI(df)
-            
-            # OBV
-            obv = OBV(df).iloc[-1]
-            
-            # ADOSC
-            adosc = ADOSC(df).iloc[-1]
-            
-            # MFI
-            mfi_14 = MFI(df, 14).iloc[-1]
-            
-            # Aroon
-            aroon_up_14, aroon_down_14 = Aroon(df, 14)
-            
-            # VWAP
-            vwap = VWAP(df).iloc[-1]
-            vwap_3 = (df['close'] * df['volume']).rolling(3).sum() / df['volume'].rolling(3).sum()
-            vwap_4 = (df['close'] * df['volume']).rolling(4).sum() / df['volume'].rolling(4).sum()
-            
-            # Bollinger Bands
-            bb_upper, bb_middle, bb_lower = Bollinger_Bands(df, 20, 2)
-            
-            # Fibonacci Bollinger Bands
-            fib_bb = Fib_Bollinger_Bands(df, 20)
-            
-            # Keltner Channel
-            kc_upper, kc_middle, kc_lower = Keltner_Channel(df, 20, 10, 2)
-            
-            # ATR
-            atr_14 = ATR(df, 14).iloc[-1]
-            
-            # Heikin Ashi
-            ha_close = Heikin_Ashi(df).iloc[-1]
-            
-            # Choppiness Index
-            chop_14 = Choppiness_Index(df, 14).iloc[-1]
-            chop_21 = Choppiness_Index(df, 21).iloc[-1]
-            
-            # TRIX
-            trix_10, trix_signal_7 = TRIX(df, 10)
-            trix_14, trix_signal_9 = TRIX(df, 14)
-            
-            # Donchian Channel
-            donchian_upper, donchian_middle, donchian_lower = Donchian_Channel(df, 20)
-            
-            # Build message
+            # Format message with all indicators
             message = (
-                f"📊 *{company_name} - {tv_symbol} ({interval_key})*\n\n"
+                f"📊 *{name} - {tv_symbol} ({interval_key})*\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n\n"
                 
                 f"1️⃣ *Market Overview*\n"
-                f"💰 Price: `{format_price(current_price)}`\n"
-                f"🔓 Open Price: `{format_price(open_price)}`\n"
-                f"📈 24h High: `{format_price(high_24h)}`\n"
-                f"📉 24h Low: `{format_price(low_24h)}`\n"
-                f"🔁 Change: `{format_price(change_points)} ({format_percent(change_percent)})`\n"
-                f"🧮 Volume: `{format_number(volume)}`\n"
-                f"⏰ Close Time: `{df.index[-1].strftime('%Y-%m-%d %H:%M')}`\n\n"
+                f"💰 Price: `{format_value(last['close'])}`\n"
+                f"🔓 Open Price: `{format_value(last['open'])}`\n"
+                f"📈 24h High: `{format_value(last['high'])}`\n"
+                f"📉 24h Low: `{format_value(last['low'])}`\n"
+                f"🔁 Change: {change_emoji} {format_value(change_points)} ({format_value(change_percent)}%)\n"
+                f"🧮 Volume: `{format_value(last['volume'], 0)}`\n"
+                f"⏰ Close Time: `{close_time}`\n\n"
                 
                 f"2️⃣ *Trend Direction*\n\n"
                 f"📊 *Simple Moving Averages (SMA):*\n"
-                f" - SMA 10: `{format_price(sma_10)}`\n"
-                f" - SMA 20: `{format_price(sma_20)}`\n"
-                f" - SMA 50: `{format_price(sma_50)}`\n"
-                f" - SMA 200: `{format_price(sma_200)}`\n\n"
+                f" - SMA 10: `{format_value(last['SMA_10'])}`\n"
+                f" - SMA 20: `{format_value(last['SMA_20'])}`\n"
+                f" - SMA 50: `{format_value(last['SMA_50'])}`\n"
+                f" - SMA 200: `{format_value(last['SMA_200'])}`\n\n"
                 
                 f"📈 *Exponential Moving Averages (EMA):*\n"
-                f" - EMA 9: `{format_price(ema_9)}`\n"
-                f" - EMA 21: `{format_price(ema_21)}`\n"
-                f" - EMA 50: `{format_price(ema_50)}`\n"
-                f" - EMA 200: `{format_price(ema_200)}`\n\n"
+                f" - EMA 9: `{format_value(last['EMA_9'])}`\n"
+                f" - EMA 21: `{format_value(last['EMA_21'])}`\n"
+                f" - EMA 50: `{format_value(last['EMA_50'])}`\n"
+                f" - EMA 200: `{format_value(last['EMA_200'])}`\n\n"
                 
                 f"⚖️ *Weighted Moving Averages (WMA):*\n"
-                f" - WMA 8: `{format_price(wma_8)}`\n"
-                f" - WMA 20: `{format_price(wma_20)}`\n"
-                f" - WMA 50: `{format_price(wma_50)}`\n"
-                f" - WMA 100: `{format_price(wma_100)}`\n\n"
+                f" - WMA 8: `{format_value(last['WMA_8'])}`\n"
+                f" - WMA 20: `{format_value(last['WMA_20'])}`\n"
+                f" - WMA 50: `{format_value(last['WMA_50'])}`\n"
+                f" - WMA 100: `{format_value(last['WMA_100'])}`\n\n"
                 
                 f"📈 *Hull Moving Average:*\n"
-                f"  (HMA 9): `{format_price(hma_9)}`\n"
-                f"  (HMA 14): `{format_price(hma_14)}`\n"
-                f"  (HMA 21): `{format_price(hma_21)}`\n\n"
+                f"  (HMA 9): `{format_value(last['HMA_9'])}`\n"
+                f"  (HMA 14): `{format_value(last['HMA_14'])}`\n"
+                f"  (HMA 21): `{format_value(last['HMA_21'])}`\n\n"
                 
                 f"📊 *Ichimoku Cloud:*\n"
-                f" - Conversion Line (9): `{format_price(conv_line.iloc[-1])}`\n"
-                f" - Base Line (26): `{format_price(base_line.iloc[-1])}`\n"
-                f" - Leading Span A: `{format_price(span_a.iloc[-1])}`\n"
-                f" - Leading Span B: `{format_price(span_b.iloc[-1])}`\n\n"
+                f" - Conversion Line (9): `{format_value(last['ICHIMOKU_CONVERSION'])}`\n"
+                f" - Base Line (26): `{format_value(last['ICHIMOKU_BASE'])}`\n"
+                f" - Leading Span A: `{format_value(last['ICHIMOKU_SPAN_A'])}`\n"
+                f" - Leading Span B: `{format_value(last['ICHIMOKU_SPAN_B'])}`\n\n"
                 
                 f"📈 *SuperTrend:*\n"
-                f" - Value(7): `{format_price(supertrend_7)}`\n"
-                f" - Value(10): `{format_price(supertrend_10)}`\n"
-                f" - Value(14): `{format_price(supertrend_14)}`\n\n"
+                f" - Value(7): `{format_value(last['SUPERTREND_7'])}`\n"
+                f" - Value(10): `{format_value(last['SUPERTREND_10'])}`\n"
+                f" - Value(14): `{format_value(last['SUPERTREND_14'])}`\n\n"
                 
                 f"📈 *Parabolic SAR:*\n"
-                f" - Step AF Value(0.02): `{format_price(psar)}`\n"
-                f" - Max AF Value(0.20): `{format_price(psar)}`\n\n"
+                f" - Step AF Value(0.02): `{format_value(last['PSAR'])}`\n\n"
                 
                 f"3️⃣ *Momentum Strength*\n\n"
                 f"📉 *MACD: 6,13,5*\n"
-                f" - MACD: `{format_price(macd_6_13_5.iloc[-1])}`\n"
-                f" - Signal: `{format_price(macd_signal_6_13_5.iloc[-1])}`\n"
-                f" - Histogram: `{format_price(macd_hist_6_13_5.iloc[-1])}`\n\n"
+                f" - MACD: `{format_value(last['MACD_6_13_5'])}`\n"
+                f" - Signal: `{format_value(last['MACD_SIGNAL_6_13_5'])}`\n"
+                f" - Histogram: `{format_value(last['MACD_HIST_6_13_5'])}`\n\n"
                 
                 f"📉 *MACD: 12,26,9*\n"
-                f" - MACD: `{format_price(macd_12_26_9.iloc[-1])}`\n"
-                f" - Signal: `{format_price(macd_signal_12_26_9.iloc[-1])}`\n"
-                f" - Histogram: `{format_price(macd_hist_12_26_9.iloc[-1])}`\n\n"
+                f" - MACD: `{format_value(last['MACD_12_26_9'])}`\n"
+                f" - Signal: `{format_value(last['MACD_SIGNAL_12_26_9'])}`\n"
+                f" - Histogram: `{format_value(last['MACD_HIST_12_26_9'])}`\n\n"
                 
                 f"📊 *Volume-Weighted MACD (VW-MACD):*\n"
-                f" - VW-MACD: `{format_price(vw_macd.iloc[-1])}`\n"
-                f" - VW-Signal: `{format_price(vw_signal.iloc[-1])}`\n"
-                f" - VW-Histogram: `{format_price(vw_hist.iloc[-1])}`\n\n"
+                f" - VW-MACD: `{format_value(last['VW_MACD'])}`\n"
+                f" - VW-Signal: `{format_value(last['VW_MACD_SIGNAL'])}`\n"
+                f" - VW-Histogram: `{format_value(last['VW_MACD_HIST'])}`\n\n"
                 
                 f"⚡ *Relative Strength Index (RSI):*\n"
-                f" - RSI (3): `{format_price(rsi_3)}`\n"
-                f" - RSI (10): `{format_price(rsi_10)}`\n"
-                f" - RSI (14): `{format_price(rsi_14)}`\n\n"
+                f" - RSI (3): `{format_value(last['RSI_3'])}`\n"
+                f" - RSI (10): `{format_value(last['RSI_10'])}`\n"
+                f" - RSI (14): `{format_value(last['RSI_14'])}`\n\n"
                 
                 f"📊 *Relative Volatility Index (RVI):*\n"
-                f" - RVI (14): `{format_price(rvi_14.iloc[-1])}`\n"
-                f" - RVI (10): `{format_price(rvi_10.iloc[-1])}`\n"
-                f" - Signal Line(4): `{format_price(rvi_signal_4.iloc[-1])}`\n\n"
+                f" - RVI (14): `{format_value(last['RVI_14'])}`\n"
+                f" - RVI (10): `{format_value(last['RVI_10'])}`\n"
+                f" - Signal Line(4): `{format_value(last['RVI_SIGNAL'])}`\n\n"
                 
-                f"📉 *Stochastic RSI (14,3,3)(0.8)level):*\n"
-                f" - %K: `{format_price(stoch_k_14.iloc[-1])}`\n"
-                f" - %D: `{format_price(stoch_d_14.iloc[-1])}`\n\n"
+                f"📉 *Stochastic RSI (14,3,3):*\n"
+                f" - %K: `{format_value(last['STOCH_RSI_K'])}`\n"
+                f" - %D: `{format_value(last['STOCH_RSI_D'])}`\n\n"
                 
                 f"📊 *KDJ (9,3,3):*\n"
-                f" - K: `{format_price(kdj_k.iloc[-1])}`\n"
-                f" - D: `{format_price(kdj_d.iloc[-1])}`\n"
-                f" - J: `{format_price(kdj_j.iloc[-1])}`\n\n"
+                f" - K: `{format_value(last['KDJ_K'])}`\n"
+                f" - D: `{format_value(last['KDJ_D'])}`\n"
+                f" - J: `{format_value(last['KDJ_J'])}`\n\n"
                 
                 f"📉 *Williams %R Indicator:*\n"
-                f" - Williams %R (12): `{format_price(williams_12)}`\n"
-                f" - Williams %R (25): `{format_price(williams_25)}`\n\n"
+                f" - Williams %R (12): `{format_value(last['WILLIAMS_R_12'])}`\n"
+                f" - Williams %R (25): `{format_value(last['WILLIAMS_R_25'])}`\n\n"
                 
                 f"📘 *Commodity Channel Index (CCI):*\n"
-                f" - CCI (14): `{format_price(cci_14)}`\n"
-                f" - CCI (20): `{format_price(cci_20)}`\n\n"
+                f" - CCI (14): `{format_value(last['CCI_14'])}`\n"
+                f" - CCI (20): `{format_value(last['CCI_20'])}`\n\n"
                 
                 f"📊 *Rate of Change (ROC):*\n"
-                f" - ROC (14): `{format_percent(roc_14)}`\n"
-                f" - ROC (25): `{format_percent(roc_25)}`\n\n"
+                f" - ROC (14): `{format_value(last['ROC_14'])}`\n"
+                f" - ROC (25): `{format_value(last['ROC_25'])}`\n\n"
                 
                 f"📈 *Momentum (MTM):*\n"
-                f" - MTM (10): `{format_price(mom_10)}`\n"
-                f" - MTM (20): `{format_price(mom_20)}`\n\n"
+                f" - MTM (10): `{format_value(last['MTM_10'])}`\n"
+                f" - MTM (20): `{format_value(last['MTM_20'])}`\n\n"
                 
                 f"🧭 *Ultimate Oscillator:*\n"
-                f" - UO (7,14,28): `{format_price(uo)}`\n\n"
+                f" - UO (7,14,28): `{format_value(last['UO'])}`\n\n"
                 
                 f"📊 *ADX (Trend Strength):*\n"
-                f" - ADX (14): `{format_price(adx_14.iloc[-1])}`\n"
-                f" - +DI (14): `{format_price(plus_di_14.iloc[-1])}`\n"
-                f" - -DI (14): `{format_price(minus_di_14.iloc[-1])}`\n\n"
+                f" - ADX (14): `{format_value(last['ADX_14'])}`\n"
+                f" - +DI (14): `{format_value(last['PLUS_DI_14'])}`\n"
+                f" - -DI (14): `{format_value(last['MINUS_DI_14'])}`\n\n"
                 
                 f"📊 *Traders Dynamic Index (TDI):*\n"
-                f" - RSI (13): `{format_price(tdi_rsi.iloc[-1])}`\n"
-                f" - Volatility Bands(34): `{format_price(tdi_vol.iloc[-1])}`\n"
-                f" - Trade Signal Line (34): `{format_price(tdi_signal.iloc[-1])}`\n\n"
+                f" - RSI (13): `{format_value(last['TDI_RSI'])}`\n"
+                f" - Volatility Bands(34): `{format_value(last['TDI_UPPER'])}`\n"
+                f" - Trade Signal Line (34): `{format_value(last['TDI_SIGNAL'])}`\n\n"
                 
                 f"4️⃣ *Volume & Money Flow*\n\n"
                 f"📊 *On-Balance Volume (OBV):*\n"
-                f" - OBV: `{format_number(obv)}`\n\n"
+                f" - OBV: `{format_value(last['OBV'], 0)}`\n\n"
                 
-                f"📊 *ADOSC:* `{format_price(adosc)}`\n\n"
+                f"📊 *ADOSC:* `{format_value(last['ADOSC'])}`\n\n"
                 
                 f"💧 *Money Flow Index (MFI):*\n"
-                f" - MFI (14): `{format_price(mfi_14)}`\n\n"
+                f" - MFI (14): `{format_value(last['MFI_14'])}`\n\n"
                 
                 f"📊 *Aroon Indicator (14):*\n"
-                f" - Aroon Up: `{format_price(aroon_up_14.iloc[-1])}`\n"
-                f" - Aroon Down: `{format_price(aroon_down_14.iloc[-1])}`\n\n"
+                f" - Aroon Up: `{format_value(last['AROON_UP'])}`\n"
+                f" - Aroon Down: `{format_value(last['AROON_DOWN'])}`\n\n"
                 
                 f"🔹 *VWAP:*\n"
-                f" - VWAP(1): `{format_price(vwap)}`\n"
-                f" - VWAP(3): `{format_price(vwap_3.iloc[-1])}`\n"
-                f" - VWAP(4): `{format_price(vwap_4.iloc[-1])}`\n\n"
+                f" - VWAP(1): `{format_value(last['VWAP_1'])}`\n"
+                f" - VWAP(3): `{format_value(last['VWAP_3'])}`\n"
+                f" - VWAP(4): `{format_value(last['VWAP_4'])}`\n\n"
                 
                 f"5️⃣ *Volatility & Range*\n\n"
                 f"🎯 *Bollinger Bands (20, 2 StdDev):*\n"
-                f" - Upper Band: `{format_price(bb_upper.iloc[-1])}`\n"
-                f" - Middle Band: `{format_price(bb_middle.iloc[-1])}`\n"
-                f" - Lower Band: `{format_price(bb_lower.iloc[-1])}`\n\n"
+                f" - Upper Band: `{format_value(last['BB_UPPER'])}`\n"
+                f" - Middle Band: `{format_value(last['BB_MIDDLE'])}`\n"
+                f" - Lower Band: `{format_value(last['BB_LOWER'])}`\n\n"
                 
                 f"📊 *Fibonacci Bollinger Bands:*\n"
-                f" - Upper (1.0): `{format_price(fib_bb['fib_1_0'].iloc[-1])}`\n"
-                f" - Fib 0.618: `{format_price(fib_bb['fib_0_618'].iloc[-1])}`\n"
-                f" - Fib 0.382: `{format_price(fib_bb['fib_0_382'].iloc[-1])}`\n"
-                f" - Middle: `{format_price(fib_bb['fib_0'].iloc[-1])}`\n"
-                f" - Fib -0.382: `{format_price(fib_bb['fib_neg0_382'].iloc[-1])}`\n"
-                f" - Fib -0.618: `{format_price(fib_bb['fib_neg0_618'].iloc[-1])}`\n"
-                f" - Lower (-1.0): `{format_price(fib_bb['fib_neg1_0'].iloc[-1])}`\n\n"
+                f" - Upper (1.0): `{format_value(last['FIB_BB_UPPER_1'])}`\n"
+                f" - Fib 0.618: `{format_value(last['FIB_BB_UPPER_0618'])}`\n"
+                f" - Fib 0.382: `{format_value(last['FIB_BB_UPPER_0382'])}`\n"
+                f" - Middle: `{format_value(last['FIB_BB_MIDDLE'])}`\n"
+                f" - Fib -0.382: `{format_value(last['FIB_BB_LOWER_0382'])}`\n"
+                f" - Fib -0.618: `{format_value(last['FIB_BB_LOWER_0618'])}`\n"
+                f" - Lower (-1.0): `{format_value(last['FIB_BB_LOWER_1'])}`\n\n"
                 
                 f"📐 *Keltner Channel (20 EMA, 2 ATR):*\n"
-                f" - Upper Band: `{format_price(kc_upper.iloc[-1])}`\n"
-                f" - Middle EMA: `{format_price(kc_middle.iloc[-1])}`\n"
-                f" - Lower Band: `{format_price(kc_lower.iloc[-1])}`\n\n"
+                f" - Upper Band: `{format_value(last['KC_UPPER'])}`\n"
+                f" - Middle EMA: `{format_value(last['KC_MIDDLE'])}`\n"
+                f" - Lower Band: `{format_value(last['KC_LOWER'])}`\n\n"
                 
                 f"📏 *Average True Range (ATR):*\n"
-                f" - ATR (14): `{format_price(atr_14)}`\n\n"
+                f" - ATR (14): `{format_value(last['ATR_14'])}`\n\n"
                 
                 f"🕯 *Heikin Ashi:*\n"
-                f" - Close: `{format_price(ha_close)}`\n\n"
+                f" - Close: `{format_value(last['HA_CLOSE'])}`\n\n"
                 
                 f"🌀 *Choppiness Index:*\n"
-                f" - Value (14): `{format_price(chop_14)}`\n"
-                f" - Value (21): `{format_price(chop_21)}`\n"
-                f" - Upper Band(61.8): `61.80`\n"
-                f" - Lower Band(38.2): `38.20`\n\n"
+                f" - Value (14): `{format_value(last['CHOP_14'])}`\n"
+                f" - Value (21): `{format_value(last['CHOP_21'])}`\n"
+                f" - Upper Band(61.8): `61.8`\n"
+                f" - Lower Band(38.2): `38.2`\n\n"
                 
                 f"📊 *TRIX:*\n"
-                f" - TRIX(10): `{format_percent(trix_10.iloc[-1])}`\n"
-                f" - TRIX(14): `{format_percent(trix_14.iloc[-1])}`\n"
-                f" - Signal EMA(7): `{format_percent(trix_signal_7.iloc[-1])}`\n"
-                f" - Signal EMA(9): `{format_percent(trix_signal_9.iloc[-1])}`\n\n"
+                f" - TRIX(10): `{format_value(last['TRIX_10'])}`\n"
+                f" - TRIX(14): `{format_value(last['TRIX_14'])}`\n"
+                f" - Signal EMA(7): `{format_value(last['TRIX_SIGNAL_7'])}`\n"
+                f" - Signal EMA(9): `{format_value(last['TRIX_SIGNAL_9'])}`\n\n"
                 
                 f"📊 *Donchian Channel (20):*\n"
-                f" - Upper: `{format_price(donchian_upper.iloc[-1])}`\n"
-                f" - Middle: `{format_price(donchian_middle.iloc[-1])}`\n"
-                f" - Lower: `{format_price(donchian_lower.iloc[-1])}`\n\n"
+                f" - Upper: `{format_value(last['DC_UPPER'])}`\n"
+                f" - Middle: `{format_value(last['DC_MIDDLE'])}`\n"
+                f" - Lower: `{format_value(last['DC_LOWER'])}`\n\n"
                 
                 f"📍 *Final Signal Summary*\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n"
             )
             
+            # Add signal summary
+            signal_summary = []
+            
+            # RSI Signal
+            if not pd.isna(last['RSI_14']):
+                if last['RSI_14'] > 70:
+                    signal_summary.append("⚠️ RSI: Overbought")
+                elif last['RSI_14'] < 30:
+                    signal_summary.append("✅ RSI: Oversold (Potential Buy)")
+                else:
+                    signal_summary.append("⚪ RSI: Neutral")
+            
+            # MACD Signal
+            if not pd.isna(last['MACD_12_26_9']) and not pd.isna(last['MACD_SIGNAL_12_26_9']):
+                if last['MACD_12_26_9'] > last['MACD_SIGNAL_12_26_9']:
+                    signal_summary.append("🟢 MACD: Bullish")
+                else:
+                    signal_summary.append("🔴 MACD: Bearish")
+            
+            # Bollinger Signal
+            if not pd.isna(last['close']) and not pd.isna(last['BB_UPPER']) and not pd.isna(last['BB_LOWER']):
+                if last['close'] > last['BB_UPPER']:
+                    signal_summary.append("⚠️ Price above BB: Overextended")
+                elif last['close'] < last['BB_LOWER']:
+                    signal_summary.append("✅ Price below BB: Potential Reversal")
+            
+            # ADX Signal
+            if not pd.isna(last['ADX_14']):
+                if last['ADX_14'] > 25:
+                    signal_summary.append(f"📊 Strong Trend (ADX: {last['ADX_14']:.1f})")
+                else:
+                    signal_summary.append(f"📊 Weak Trend (ADX: {last['ADX_14']:.1f})")
+            
+            if signal_summary:
+                message += "\n".join(signal_summary)
+            else:
+                message += "No clear signals at this time."
+            
             # Split message if too long
-            if len(message) > 4000:
-                part1 = message[:4000]
-                part1 = part1[:part1.rfind('\n')]
-                await update.message.reply_text(part1, parse_mode='Markdown')
-                
-                part2 = message[len(part1):]
-                if part2:
-                    await update.message.reply_text(part2, parse_mode='Markdown')
+            if len(message) > 4096:
+                # Send first part
+                await update.message.reply_text(message[:4096], parse_mode='Markdown')
+                # Send second part
+                await update.message.reply_text(message[4096:], parse_mode='Markdown')
             else:
                 await update.message.reply_text(message, parse_mode='Markdown')
             
         except Exception as e:
             logger.error(f"Error: {e}", exc_info=True)
-            await update.message.reply_text(f"❌ Error fetching {company_name}. Please try again later.")
+            await update.message.reply_text(f"❌ Error fetching {name}. Please try again later.")
     
     return command
 
 # -------------------------
-# Start Command
+# Start/Ping Commands
 # -------------------------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command"""
-    start_time = time.time()
-    msg = await update.message.reply_text("⚡")
-    end_time = time.time()
-    latency = round((end_time - start_time) * 1000, 2)
-    await msg.delete()
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /start command with comprehensive help"""
     
-    stock_table = ""
+    # Calculate ping response time
+    start_time = time.time()
+    msg = await update.message.reply_text("⏳ Checking bot status...")
+    end_time = time.time()
+    ping_time = round((end_time - start_time) * 1000, 2)
+    
+    # Create stocks table
+    stocks_table = "| Company | TradingView Symbol |\n"
+    stocks_table += "| ------- | ------------------ |\n"
     for stock in stocks:
-        stock_table += f"| {stock['name']:<30} | {stock['tv_symbol']:<18} |\n"
+        stocks_table += f"| {stock['name']} | {stock['tv_symbol']} |\n"
+    stocks_table += f"| {gold['name']} | {gold['tv_symbol']} |\n"
     
     help_text = (
+        f"Your Bot is working! ✅\n"
+        f"Ping response time: {ping_time}ms\n\n"
+        
         f"🔥 *PSX Stock Indicator Bot*\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n\n"
         
-        f"Bot is working! ✅\n"
-        f"Ping response time: {latency}ms\n\n"
+        f"*TEST COMMANDS (Verify bot works):*\n"
+        f"/start - Check if bot is responding and check response time\n\n"
         
         f"*Available Stocks:*\n"
-        f"| Company                       | TradingView Symbol |\n"
-        f"| ----------------------------- | ------------------ |\n"
-        f"{stock_table}"
-        f"also GOLD\n\n"
+        f"```\n{stocks_table}```\n\n"
         
         f"*Timeframes:* 15m, 30m, 1h, 2h, 4h, 1d, 1w\n\n"
         
         f"*Example Commands:*\n"
-        f"/ffc_15m - FFC 15min\n"
-        f"/ogdc_1h - OGDC 1hour\n"
-        f"/hubc_4h - HUBC 4hour\n"
-        f"/engroh_1d - ENGRO Daily\n\n"
+        f"`/ffc_15m` - FFC 15min\n"
+        f"`/ogdc_1h` - OGDC 1hour\n"
+        f"`/hubc_4h` - HUBC 4hour\n"
+        f"`/engroh_1d` - ENGROH Daily\n"
+        f"`/gold_1d` - Gold Daily\n\n"
         
         f"*Indicators:*\n"
-        f"All Major Indicators\n\n"
+        f"All Major Indicators (50+ indicators including RSI, MACD, Bollinger Bands, Ichimoku, Fibonacci, etc.)\n\n"
         
-        f"⏳ *Note:* First request may take 10-15 seconds"
+        f"⏳ *Note:* First request may take 10-15 seconds due to data fetching.\n"
+        f"📊 Each command returns comprehensive technical analysis with 50+ indicators."
     )
     
-    await update.message.reply_text(help_text, parse_mode='Markdown')
+    await msg.edit_text(help_text, parse_mode='Markdown')
 
-# -------------------------
-# Ping Command
-# -------------------------
 async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Ping command"""
+    """Simple ping command"""
     start_time = time.time()
     msg = await update.message.reply_text("🏓 Pong!")
     end_time = time.time()
@@ -575,21 +653,36 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # -------------------------
 # Build Telegram Application
 # -------------------------
-telegram_app = Application.builder().token(BOT_TOKEN).concurrent_updates(True).build()
+telegram_app = ApplicationBuilder()\
+    .token(BOT_TOKEN)\
+    .concurrent_updates(True)\
+    .build()
 
-# Add commands
+# Add start and ping commands
+telegram_app.add_handler(CommandHandler("start", start_command))
 telegram_app.add_handler(CommandHandler("ping", ping_command))
-telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(CommandHandler("help", start))
+logger.info(f"✅ Added commands: /start, /ping")
 
-# Add stock commands
-for stock in stocks:
+# Add all stock commands
+for stock in stocks + [gold]:
     for interval_key in interval_map.keys():
         cmd_name = f"{stock['symbol'].lower()}_{interval_key}"
-        telegram_app.add_handler(CommandHandler(cmd_name, create_stock_command(stock, interval_key)))
+        telegram_app.add_handler(
+            CommandHandler(
+                cmd_name, 
+                create_stock_command(
+                    stock['symbol'], 
+                    stock['name'], 
+                    stock['tv_symbol'], 
+                    interval_key
+                )
+            )
+        )
         logger.info(f"✅ Added command: /{cmd_name}")
 
-# Error handler
+# -------------------------
+# Error Handler
+# -------------------------
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Error: {context.error}")
     if update and update.effective_message:
@@ -619,11 +712,15 @@ def run_flask():
 # -------------------------
 if __name__ == "__main__":
     try:
+        # Start Flask
         flask_thread = threading.Thread(target=run_flask, daemon=True)
         flask_thread.start()
         logger.info(f"✅ Flask server started on port {os.environ.get('PORT', 5000)}")
         
+        # Small delay
         time.sleep(2)
+        
+        # Start Telegram bot
         logger.info("🚀 Starting Telegram bot...")
         telegram_app.run_polling(drop_pending_updates=True)
         

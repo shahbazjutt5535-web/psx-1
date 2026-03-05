@@ -1,6 +1,13 @@
 """
 PSX Stock Indicator Telegram Bot
-UPDATED VERSION - Complete indicators with formatted output
+Compatible with:
+- Python 3.11.9
+- python-telegram-bot==20.3
+- pandas==2.1.4
+- numpy==1.24.4
+- httpx==0.24.0
+- Flask==2.3.3
+- nest_asyncio==1.6.0
 """
 
 import os
@@ -10,18 +17,19 @@ import pandas as pd
 import numpy as np
 from flask import Flask
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes
 import nest_asyncio
 import asyncio
 import time
 from datetime import datetime
-import functools
+import warnings
+warnings.filterwarnings('ignore')
 
 # Apply nest_asyncio for Render deployment
 nest_asyncio.apply()
 
 # -------------------------
-# FIX: Patch input() before importing tvDatafeed
+# Patch input() before importing tvDatafeed
 # -------------------------
 import builtins
 original_input = builtins.input
@@ -133,7 +141,7 @@ stocks = [
 # -------------------------
 def format_number(value):
     """Format number to 2 decimal places if not NaN"""
-    if pd.isna(value):
+    if pd.isna(value) or value is None:
         return "N/A"
     if isinstance(value, (int, float)):
         if abs(value) > 1000000:
@@ -145,17 +153,21 @@ def format_number(value):
 
 def format_price(value):
     """Format price to 2 decimal places"""
-    return f"{value:.2f}" if not pd.isna(value) else "N/A"
+    if pd.isna(value) or value is None:
+        return "N/A"
+    return f"{value:.2f}"
 
 def format_percent(value):
     """Format percentage"""
-    return f"{value:.2f}%" if not pd.isna(value) else "N/A"
+    if pd.isna(value) or value is None:
+        return "N/A"
+    return f"{value:.2f}%"
 
 # -------------------------
-# UPDATED: Command Generator with Complete Indicators
+# Command Generator with Complete Indicators - Clean Output
 # -------------------------
 def create_stock_command(stock_info, interval_key):
-    """Create a command handler with complete indicators"""
+    """Create a command handler with complete indicators - clean output only values"""
     symbol = stock_info["symbol"]
     tv_symbol = stock_info["tv_symbol"]
     company_name = stock_info["name"]
@@ -176,14 +188,14 @@ def create_stock_command(stock_info, interval_key):
                         lambda: tv.get_hist(
                             symbol=tv_symbol,
                             interval=interval_map[interval_key],
-                            n_bars=300  # Get more bars for accurate indicators
+                            n_bars=300
                         )
                     ),
                     timeout=25.0
                 )
             except asyncio.TimeoutError:
                 logger.error(f"Timeout fetching {symbol} {interval_key}")
-                await update.message.reply_text(f"❌ Request timed out. TradingView is taking too long to respond. Please try again.")
+                await update.message.reply_text(f"❌ Request timed out. Please try again.")
                 return
             
             # Validate data
@@ -192,7 +204,7 @@ def create_stock_command(stock_info, interval_key):
                 return
             
             if len(df) < 100:
-                await update.message.reply_text(f"⚠️ Insufficient data for {company_name}. Only {len(df)} bars available.")
+                await update.message.reply_text(f"⚠️ Insufficient data. Only {len(df)} bars available.")
                 return
             
             # Calculate all indicators
@@ -204,7 +216,7 @@ def create_stock_command(stock_info, interval_key):
             volume = df['volume'].iloc[-1]
             prev_close = df['close'].iloc[-2] if len(df) > 1 else current_price
             change_points = current_price - prev_close
-            change_percent = (change_points / prev_close) * 100
+            change_percent = (change_points / prev_close) * 100 if prev_close != 0 else 0
             
             # Moving Averages
             sma_10 = SMA(df, 10).iloc[-1]
@@ -314,7 +326,7 @@ def create_stock_command(stock_info, interval_key):
             atr_14 = ATR(df, 14).iloc[-1]
             
             # Heikin Ashi
-            ha_close, ha_open, ha_high, ha_low = Heikin_Ashi(df)
+            ha_close = Heikin_Ashi(df).iloc[-1]
             
             # Choppiness Index
             chop_14 = Choppiness_Index(df, 14).iloc[-1]
@@ -327,7 +339,7 @@ def create_stock_command(stock_info, interval_key):
             # Donchian Channel
             donchian_upper, donchian_middle, donchian_lower = Donchian_Channel(df, 20)
             
-            # Format the complete message
+            # Format the complete message - CLEAN VERSION (only values)
             message = (
                 f"📊 *{company_name} - {tv_symbol} ({interval_key})*\n\n"
                 
@@ -468,13 +480,13 @@ def create_stock_command(stock_info, interval_key):
                 f" - Lower Band: `{format_price(bb_lower.iloc[-1])}`\n\n"
                 
                 f"📊 *Fibonacci Bollinger Bands:*\n"
-                f" - Upper (1.0): `{format_price(fib_bb['fib_1.0'].iloc[-1])}`\n"
-                f" - Fib 0.618: `{format_price(fib_bb['fib_0.618'].iloc[-1])}`\n"
-                f" - Fib 0.382: `{format_price(fib_bb['fib_0.382'].iloc[-1])}`\n"
+                f" - Upper (1.0): `{format_price(fib_bb['fib_1_0'].iloc[-1])}`\n"
+                f" - Fib 0.618: `{format_price(fib_bb['fib_0_618'].iloc[-1])}`\n"
+                f" - Fib 0.382: `{format_price(fib_bb['fib_0_382'].iloc[-1])}`\n"
                 f" - Middle: `{format_price(fib_bb['fib_0'].iloc[-1])}`\n"
-                f" - Fib -0.382: `{format_price(fib_bb['fib_neg0.382'].iloc[-1])}`\n"
-                f" - Fib -0.618: `{format_price(fib_bb['fib_neg0.618'].iloc[-1])}`\n"
-                f" - Lower (-1.0): `{format_price(fib_bb['fib_neg1.0'].iloc[-1])}`\n\n"
+                f" - Fib -0.382: `{format_price(fib_bb['fib_neg0_382'].iloc[-1])}`\n"
+                f" - Fib -0.618: `{format_price(fib_bb['fib_neg0_618'].iloc[-1])}`\n"
+                f" - Lower (-1.0): `{format_price(fib_bb['fib_neg1_0'].iloc[-1])}`\n\n"
                 
                 f"📐 *Keltner Channel (20 EMA, 2 ATR):*\n"
                 f" - Upper Band: `{format_price(kc_upper.iloc[-1])}`\n"
@@ -485,7 +497,7 @@ def create_stock_command(stock_info, interval_key):
                 f" - ATR (14): `{format_price(atr_14)}`\n\n"
                 
                 f"🕯 *Heikin Ashi:*\n"
-                f" - Close: `{format_price(ha_close.iloc[-1])}`\n\n"
+                f" - Close: `{format_price(ha_close)}`\n\n"
                 
                 f"🌀 *Choppiness Index:*\n"
                 f" - Value (14): `{format_price(chop_14)}`\n"
@@ -507,44 +519,11 @@ def create_stock_command(stock_info, interval_key):
                 f"📍 *Final Signal Summary*\n"
             )
             
-            # Add final signal summary based on indicators
-            signals = []
-            
-            # Trend signals
-            if current_price > sma_200 and sma_20 > sma_50:
-                signals.append("✅ Strong Uptrend")
-            elif current_price < sma_200 and sma_20 < sma_50:
-                signals.append("❌ Strong Downtrend")
-            
-            # RSI signals
-            if rsi_14 > 70:
-                signals.append("⚠️ Overbought - Caution")
-            elif rsi_14 < 30:
-                signals.append("🎯 Oversold - Potential Buy")
-            
-            # MACD signals
-            if macd_12_26_9.iloc[-1] > macd_signal_12_26_9.iloc[-1]:
-                signals.append("✅ MACD Bullish")
-            else:
-                signals.append("❌ MACD Bearish")
-            
-            # Stochastic signals
-            if stoch_k_14.iloc[-1] < 20 and stoch_k_14.iloc[-1] > stoch_d_14.iloc[-1]:
-                signals.append("🎯 Stochastic Oversold Crossover")
-            elif stoch_k_14.iloc[-1] > 80 and stoch_k_14.iloc[-1] < stoch_d_14.iloc[-1]:
-                signals.append("⚠️ Stochastic Overbought Crossover")
-            
-            # ADX trend strength
-            if adx_14.iloc[-1] > 25:
-                signals.append(f"📊 Strong Trend (ADX: {adx_14.iloc[-1]:.1f})")
-            
-            message += "\n".join([f" - {s}" for s in signals])
-            
             # Split message if too long (Telegram has 4096 char limit)
             if len(message) > 4000:
                 # Send first part
                 part1 = message[:4000]
-                part1 = part1[:part1.rfind('\n')]  # Cut at last newline
+                part1 = part1[:part1.rfind('\n')]
                 await update.message.reply_text(part1, parse_mode='Markdown')
                 
                 # Send second part
@@ -583,7 +562,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Create example commands
     example_commands = ""
-    for stock in stocks[:5]:  # First 5 stocks as examples
+    example_stocks = stocks[:5]  # First 5 stocks as examples
+    for stock in example_stocks:
         symbol_lower = stock['symbol'].lower()
         example_commands += f"/{symbol_lower}_15m - {stock['name']} 15min\n"
     
@@ -607,7 +587,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"/engroh_1d - ENGRO Daily\n\n"
         
         f"*Indicators:*\n"
-        f"All Major Indicators (SMA, EMA, WMA, HMA, Ichimoku, SuperTrend, Parabolic SAR, MACD, VW-MACD, RSI, RVI, Stochastic RSI, KDJ, Williams %R, CCI, ROC, Momentum, Ultimate Oscillator, ADX, TDI, OBV, ADOSC, MFI, Aroon, VWAP, Bollinger Bands, Fibonacci BB, Keltner, ATR, Heikin Ashi, Choppiness Index, TRIX, Donchian Channel)\n\n"
+        f"All Major Indicators\n\n"
         
         f"⏳ *Note:* First request may take 10-15 seconds"
     )
@@ -615,7 +595,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 # -------------------------
-# Test Commands
+# Ping Command
 # -------------------------
 async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Ping command to check latency"""
@@ -628,10 +608,7 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # -------------------------
 # Build Telegram Application
 # -------------------------
-telegram_app = ApplicationBuilder()\
-    .token(BOT_TOKEN)\
-    .concurrent_updates(True)\
-    .build()
+telegram_app = Application.builder().token(BOT_TOKEN).concurrent_updates(True).build()
 
 # Add test commands
 telegram_app.add_handler(CommandHandler("ping", ping_command))
@@ -666,11 +643,11 @@ flask_app = Flask(__name__)
 
 @flask_app.route("/")
 def home():
-    return "✅ PSX Indicator Bot is Running with Complete Indicators!"
+    return "✅ PSX Indicator Bot is Running!"
 
 @flask_app.route("/health")
 def health():
-    return {"status": "healthy", "bot": "running", "indicators": "complete"}, 200
+    return {"status": "healthy", "bot": "running"}, 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 5000))

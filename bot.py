@@ -774,7 +774,7 @@ async def list_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for tf in timeframes:
             cmd = f"/{stock['symbol'].lower()}_{tf}"
             commands_list.append(cmd)
-        
+    
         # Join all commands with comma
         message += f"{' ,  '.join(commands_list)}\n\n"
     

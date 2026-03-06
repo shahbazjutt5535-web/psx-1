@@ -288,7 +288,7 @@ def ROC(data, period=14):
     return roc
 
 def KDJ(data, period=9, k_slow=3, d_slow=3):
-    """KDJ Indicator - Only K and D"""
+    """KDJ Indicator - Only K and D (J removed - noise)"""
     low_min = data['low'].rolling(period).min()
     high_max = data['high'].rolling(period).max()
     

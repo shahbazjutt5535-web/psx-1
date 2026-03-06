@@ -323,21 +323,9 @@ def create_stock_command(stock_info, interval_key):
                 f"Change: {change_sign}{format_value(abs(change_points))} ({format_value(change_percent)}%)\n"
                 f"Volume: {format_value(last['volume'], 0)}\n"
                 f"Close Time: {close_time}\n\n"
+                
+                f"2️⃣ Trend Direction\n\n"
             )
-            
-            # News Sentiment (NEW)
-            message += (
-                f"6️⃣ Market Sentiment\n\n"
-                f"News Sentiment:\n"
-                f"  Positive: {sentiment.get('positive', 0)}%\n"
-                f"  Negative: {sentiment.get('negative', 0)}%\n"
-                f"  Neutral: {sentiment.get('neutral', 0)}%\n"
-                f"  Overall: {sentiment.get('overall', 'Neutral')}\n"
-                f"  Articles: {sentiment.get('article_count', 0)}\n\n"
-            )
-            
-            # 2️⃣ Trend Direction
-            message += f"2️⃣ Trend Direction\n\n"
             
             # SMA
             sma_section = "Simple Moving Averages (SMA):\n"
@@ -486,6 +474,17 @@ def create_stock_command(stock_info, interval_key):
                     f"  Middle: {format_value(last['DC_MIDDLE'])}\n"
                     f"  Lower: {format_value(last['DC_LOWER'])}\n\n"
                 )
+            
+            # 6️⃣ Market Sentiment (NEW)
+            message += (
+                f"6️⃣ Market Sentiment\n\n"
+                f"News Sentiment:\n"
+                f"  Positive: {sentiment.get('positive', 0)}%\n"
+                f"  Negative: {sentiment.get('negative', 0)}%\n"
+                f"  Neutral: {sentiment.get('neutral', 0)}%\n"
+                f"  Overall: {sentiment.get('overall', 'Neutral')}\n"
+                f"  Articles: {sentiment.get('article_count', 0)}\n\n"
+            )
             
             # Final Signal Summary (just text)
             message += f"📍 Final Signal Summary"

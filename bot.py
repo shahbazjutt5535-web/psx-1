@@ -757,6 +757,31 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.edit_text(f"Pong! Response time: {latency}ms")
 
 # -------------------------
+# Commands List Feature
+# -------------------------
+async def list_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /commands - show all available stock commands with timeframes"""
+    
+    message = "📋 **Available Commands** 📋\n\n"
+    
+    for stock in stocks:
+        message += f"**{stock['symbol']}**\n"
+        message += "`5m` `15m` `30m` `1h` `4h` `1d` `1w`\n\n"
+    
+    # Add gold separately
+    message += f"**{gold['symbol']}**\n"
+    message += "`5m` `15m` `30m` `1h` `4h` `1d` `1w`\n\n"
+    
+    message += "━━━━━━━━━━━━━━━━━━━━━\n"
+    message += "💡 **How to use:**\n"
+    message += "Click on any timeframe above or type:\n"
+    message += "`/SYMBOL_TIMEFRAME`\n"
+    message += "Example: `/ffc_5m` or `/ffc_1d`\n\n"
+    message += "Other commands: `/start`, `/ping`, `/text`"
+    
+    await update.message.reply_text(message, parse_mode='Markdown')
+
+# -------------------------
 # Build Telegram Application
 # -------------------------
 telegram_app = ApplicationBuilder()\
@@ -768,6 +793,7 @@ telegram_app = ApplicationBuilder()\
 telegram_app.add_handler(CommandHandler("start", start_command))
 telegram_app.add_handler(CommandHandler("ping", ping_command))
 telegram_app.add_handler(CommandHandler("text", text_command))
+telegram_app.add_handler(CommandHandler("commands", list_commands))
 logger.info("Added commands: /start, /ping, /text")
 
 # Add all stock commands for all timeframes

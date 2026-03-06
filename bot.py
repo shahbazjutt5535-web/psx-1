@@ -757,7 +757,7 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.edit_text(f"Pong! Response time: {latency}ms")
 
 # -------------------------
-# Commands List Feature - Simple List with Full Commands
+# Commands List Feature - Simple List with Full Commands (WITH UNDERSCORE)
 # -------------------------
 async def list_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /commands - show all available commands in a simple list"""

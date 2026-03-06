@@ -297,7 +297,7 @@ def KDJ(data, period=9, k_slow=3, d_slow=3):
     k = rsv.ewm(span=k_slow, adjust=False).mean()
     d = k.ewm(span=d_slow, adjust=False).mean()
     
-    return k, d  # J line removed - it creates noise
+    return k, d
 
 def UltimateOscillator(data, period1=7, period2=14, period3=28):
     """Ultimate Oscillator"""

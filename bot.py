@@ -9,8 +9,8 @@ import threading
 import pandas as pd
 import numpy as np
 from flask import Flask
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackQueryHandler
 import nest_asyncio
 import asyncio
 import time
@@ -757,29 +757,100 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.edit_text(f"Pong! Response time: {latency}ms")
 
 # -------------------------
-# Commands List Feature
+# Commands List Feature with Clickable Buttons
 # -------------------------
 async def list_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /commands - show all available stock commands with timeframes"""
+    """Handle /commands - show all available stock commands with clickable timeframe buttons"""
+    
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     
     message = "📋 **Available Commands** 📋\n\n"
-    
-    for stock in stocks:
-        message += f"**{stock['symbol']}**\n"
-        message += "`5m` `15m` `30m` `1h` `4h` `1d` `1w`\n\n"
-    
-    # Add gold separately
-    message += f"**{gold['symbol']}**\n"
-    message += "`5m` `15m` `30m` `1h` `4h` `1d` `1w`\n\n"
-    
-    message += "━━━━━━━━━━━━━━━━━━━━━\n"
-    message += "💡 **How to use:**\n"
-    message += "Click on any timeframe above or type:\n"
-    message += "`/SYMBOL_TIMEFRAME`\n"
-    message += "Example: `/ffc_5m` or `/ffc_1d`\n\n"
-    message += "Other commands: `/start`, `/ping`, `/text`"
+    message += "👇 **Click on any timeframe below to execute command:**\n\n"
     
     await update.message.reply_text(message, parse_mode='Markdown')
+    
+    # Create buttons for each stock
+    for stock in stocks + [gold]:
+        # Create keyboard row for this stock
+        keyboard = []
+        row = []
+        
+        # Add stock name as a label (non-clickable)
+        stock_text = f"📊 {stock['symbol']}"
+        
+        # Add timeframe buttons
+        timeframes = ['5m', '15m', '30m', '1h', '4h', '1d', '1w']
+        for tf in timeframes:
+            # Create button that sends command when clicked
+            button = InlineKeyboardButton(
+                text=tf, 
+                callback_data=f"cmd_{stock['symbol'].lower()}_{tf}"
+            )
+            row.append(button)
+            
+            # 4 buttons per row for better layout
+            if len(row) >= 4:
+                keyboard.append(row)
+                row = []
+        
+        # Add remaining buttons
+        if row:
+            keyboard.append(row)
+        
+        # Send stock name as normal text
+        await update.message.reply_text(f"**{stock['symbol']}**", parse_mode='Markdown')
+        
+        # Send buttons
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("Select timeframe:", reply_markup=reply_markup)
+    
+    # Add other commands info
+    other_cmds = "━━━━━━━━━━━━━━━━━━━━━\n"
+    other_cmds += "**Other Commands:**\n"
+    other_cmds += "`/start`  `/ping`  `/text`"
+    
+    await update.message.reply_text(other_cmds, parse_mode='Markdown')
+
+# -------------------------
+# Handle button clicks
+# -------------------------
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle button clicks from inline keyboards"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Extract command from callback data
+    data = query.data
+    
+    if data.startswith("cmd_"):
+        # Format: cmd_symbol_timeframe
+        parts = data.split('_')
+        if len(parts) >= 3:
+            symbol = parts[1]
+            timeframe = parts[2]
+            
+            # Find the full stock info
+            stock_info = None
+            for stock in stocks + [gold]:
+                if stock['symbol'].lower() == symbol.lower():
+                    stock_info = stock
+                    break
+            
+            if stock_info:
+                # Execute the command
+                cmd_func = create_stock_command(
+                    stock_info['symbol'],
+                    stock_info['name'],
+                    stock_info['tv_symbol'],
+                    timeframe
+                )
+                
+                # Create a fake update with the original message
+                fake_update = update
+                fake_update.message = query.message
+                
+                # Execute the command
+                await cmd_func(fake_update, context)
 
 # -------------------------
 # Build Telegram Application

@@ -1,6 +1,6 @@
 """
 PSX Stock Indicator Telegram Bot
-UPDATED VERSION - Clean Output, No Emojis, No Overbought Labels, Day Range Added
+PROFESSIONAL VERSION - Optimized Indicators, No Duplicates, Clean Output
 """
 
 import os
@@ -133,10 +133,10 @@ stocks = [
     {"symbol": "PSO", "name": "Pakistan State Oil", "tv_symbol": "PSX:PSO"},
 ]
 
-# NEW: KSE-100 Index
+# KSE-100 Index
 kse100 = {"symbol": "KSE100", "name": "KSE-100 Index", "tv_symbol": "PSX:KSE100"}
 
-# Alternative Meezan ETF symbols if the above doesn't work
+# Alternative Meezan ETF symbols
 meezan_alternatives = [
     "PSX:MZNPETF",
     "PSX:MEZNPETF", 
@@ -147,172 +147,121 @@ meezan_alternatives = [
 # Gold symbol
 gold = {"symbol": "GOLD", "name": "Gold", "tv_symbol": "TVC:GOLD"}
 
-# Combine all symbols (including KSE100)
+# Combine all symbols
 all_symbols = stocks + [kse100] + [gold]
 
 # -------------------------
-# TIME FRAME OPTIMIZED INDICATORS - NO DUPLICATES
+# PROFESSIONAL INDICATORS - Optimized by Timeframe
 # -------------------------
 def calculate_indicators_by_timeframe(df, timeframe):
-    """Calculate indicators with settings optimized for specific timeframe - No duplicates"""
+    """Calculate indicators - Professional Grade, No Duplicates"""
     
-    # ===== 5 MINUTE / 15 MINUTE (Scalping - Fast) =====
+    # ===== BASE INDICATORS (Common for ALL Timeframes) =====
+    # These are essential and light enough for all timeframes
+    
+    # Trend (EMA only - cleaner than SMA)
+    df['EMA_9'] = EMA(df, 9)
+    df['EMA_21'] = EMA(df, 21)
+    df['EMA_50'] = EMA(df, 50)
+    
+    # Momentum (Single RSI for all timeframes)
+    df['RSI'] = RSI(df, 14)  # Clean signals
+    
+    # MACD (Essential)
+    df['MACD'], df['MACD_SIGNAL'], df['MACD_HIST'] = MACD(df)
+    
+    # Volume
+    df['OBV'] = OBV(df)
+    df['VOLUME_MA'] = Volume_MA(df, 20)
+    df['VOLUME_OSC'] = Volume_Oscillator(df, 5, 20)
+    
+    # Volatility
+    df['ATR'] = ATR(df, 14)
+    df['BB_UPPER'], df['BB_MIDDLE'], df['BB_LOWER'] = Bollinger_Bands(df)
+    
+    # VWAP (Useful for all intraday)
+    if timeframe in ["5m", "15m", "30m", "1h", "4h"]:
+        df['VWAP'] = VWAP_HLC3(df)
+        # VWAP Bands
+        vwap, upper1, lower1, upper2, lower2 = VWAP_Bands(df, 1, 2)
+        df['VWAP'] = vwap
+        df['VWAP_UPPER_1'] = upper1
+        df['VWAP_LOWER_1'] = lower1
+        df['VWAP_UPPER_2'] = upper2
+        df['VWAP_LOWER_2'] = lower2
+    
+    # ===== SCALPING TIMEFRAMES (5m, 15m) - Fast, Light =====
     if timeframe in ["5m", "15m"]:
-        # EXISTING INDICATORS
-        df['SMA_20'] = SMA(df, 20)
-        df['EMA_9'] = EMA(df, 9)
-        df['EMA_21'] = EMA(df, 21)
-        df['HMA_9'] = HMA(df, 9)
-        df['ICHIMOKU_CONVERSION'], df['ICHIMOKU_BASE'], df['ICHIMOKU_SPAN_A'], df['ICHIMOKU_SPAN_B'] = Ichimoku(df)
+        # SuperTrend - Fast
         df['SUPERTREND'] = SuperTrend(df, period=7, multiplier=3)
-        df['PSAR'] = ParabolicSAR(df)
-        df['MACD'], df['MACD_SIGNAL'], df['MACD_HIST'] = MACD(df)
-        df['RSI_14'] = RSI(df, 14)
-        df['RSI_7'] = RSI(df, 7)
-        df['STOCH_14_3_K'], df['STOCH_14_3_D'] = Stochastic(df, 14, 3)
-        df['STOCH_9_6_3_K'], df['STOCH_9_6_3_D'] = Stochastic_9_6_3(df)
-        df['KDJ_K'], df['KDJ_D'], df['KDJ_J'] = KDJ(df, 9, 3, 3)
-        df['WILLIAMS'] = WilliamsR(df, 25)
-        df['CCI'] = CCI(df, 14)
-        df['ROC'] = ROC(df, 14)
-        df['ADX'], df['PLUS_DI'], df['MINUS_DI'] = ADX(df, 14)
-        df['UO'] = UltimateOscillator(df)
-        df['OBV'] = OBV(df)
+        
+        # Donchian Channel - Fast
+        df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df, 10)
+        
+        # MFI - Money Flow Index
         df['MFI'] = MFI(df, 10)
-        df['AROON_UP'], df['AROON_DOWN'] = Aroon(df, 10)
-        df['BB_UPPER'], df['BB_MIDDLE'], df['BB_LOWER'] = Bollinger_Bands(df, 15, 2)
-        df['ATR'] = ATR(df, 7)
+        
+        # Heikin Ashi for trend visualization
         df['HA_CLOSE'] = HeikinAshi(df)
-        df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df, 15)
-        
-        # NEW INDICATORS
-        df['STOCH_RSI_K'], df['STOCH_RSI_D'] = Stochastic_RSI(df, 14, 3, 3)
-        df['VWAP_HLC3'] = VWAP_HLC3(df)
-        vwap, upper1, lower1, upper2, lower2 = VWAP_Bands(df, 1, 2)
-        df['VWAP'] = vwap
-        df['VWAP_UPPER_1'] = upper1
-        df['VWAP_LOWER_1'] = lower1
-        df['VWAP_UPPER_2'] = upper2
-        df['VWAP_LOWER_2'] = lower2
-        df['VOLUME_MA_20'] = Volume_MA(df, 20)
-        df['VOLUME_OSC'] = Volume_Oscillator(df, 5, 20)
-        df['VOLT_10'] = VOLT(df, 10)
-        
-        tdi_result = TDI(df, 13, 34, 34)
-        if len(tdi_result) == 5:
-            df['TDI_RSI'], df['TDI_UPPER'], df['TDI_LOWER'], df['TDI_SIGNAL'], df['TDI_MARKET_BASE'] = tdi_result
     
-    # ===== 30 MINUTE / 1 HOUR (Intraday - Medium) =====
+    # ===== INTRADAY TIMEFRAMES (30m, 1h) - Medium =====
     elif timeframe in ["30m", "1h"]:
-        df['SMA_20'] = SMA(df, 20)
-        df['SMA_50'] = SMA(df, 50)
-        df['EMA_9'] = EMA(df, 9)
-        df['EMA_21'] = EMA(df, 21)
-        df['EMA_50'] = EMA(df, 50)
-        df['HMA_14'] = HMA(df, 14)
-        df['ICHIMOKU_CONVERSION'], df['ICHIMOKU_BASE'], df['ICHIMOKU_SPAN_A'], df['ICHIMOKU_SPAN_B'] = Ichimoku(df)
-        df['SUPERTREND'] = SuperTrend(df, period=10, multiplier=3)
-        df['PSAR'] = ParabolicSAR(df)
-        df['MACD'], df['MACD_SIGNAL'], df['MACD_HIST'] = MACD(df)
-        df['RSI_14'] = RSI(df, 14)
-        df['RSI_7'] = RSI(df, 7)
-        df['STOCH_14_3_K'], df['STOCH_14_3_D'] = Stochastic(df, 14, 3)
-        df['STOCH_9_6_3_K'], df['STOCH_9_6_3_D'] = Stochastic_9_6_3(df)
-        df['KDJ_K'], df['KDJ_D'], df['KDJ_J'] = KDJ(df)
-        df['WILLIAMS'] = WilliamsR(df, 25)
-        df['CCI'] = CCI(df, 14)
-        df['ROC'] = ROC(df, 14)
-        df['UO'] = UltimateOscillator(df)
-        df['ADX'], df['PLUS_DI'], df['MINUS_DI'] = ADX(df, 14)
-        df['OBV'] = OBV(df)
-        df['MFI'] = MFI(df, 14)
-        df['AROON_UP'], df['AROON_DOWN'] = Aroon(df, 14)
-        df['BB_UPPER'], df['BB_MIDDLE'], df['BB_LOWER'] = Bollinger_Bands(df)
-        df['ATR'] = ATR(df, 14)
-        df['HA_CLOSE'] = HeikinAshi(df)
-        df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df, 20)
-        
-        # NEW INDICATORS
-        df['STOCH_RSI_K'], df['STOCH_RSI_D'] = Stochastic_RSI(df, 14, 3, 3)
-        df['VWAP_HLC3'] = VWAP_HLC3(df)
-        vwap, upper1, lower1, upper2, lower2 = VWAP_Bands(df, 1, 2)
-        df['VWAP'] = vwap
-        df['VWAP_UPPER_1'] = upper1
-        df['VWAP_LOWER_1'] = lower1
-        df['VWAP_UPPER_2'] = upper2
-        df['VWAP_LOWER_2'] = lower2
-        df['VOLUME_MA_20'] = Volume_MA(df, 20)
-        df['VOLUME_OSC'] = Volume_Oscillator(df, 5, 20)
-        df['VOLT_10'] = VOLT(df, 10)
-        
-        tdi_result = TDI(df, 13, 34, 34)
-        if len(tdi_result) == 5:
-            df['TDI_RSI'], df['TDI_UPPER'], df['TDI_LOWER'], df['TDI_SIGNAL'], df['TDI_MARKET_BASE'] = tdi_result
-        
-        try:
-            fib_high, fib_low, fib_levels, current_level = Fibonacci_Retracement(df, 50)
-            if fib_high is not None:
-                df['FIB_HIGH'] = fib_high
-                df['FIB_LOW'] = fib_low
-                df.attrs['fib_levels'] = fib_levels
-        except:
-            pass
-    
-    # ===== 4 HOUR (Swing Trading - Slow) =====
-    elif timeframe == "4h":
-        df['SMA_20'] = SMA(df, 20)
-        df['SMA_50'] = SMA(df, 50)
-        df['SMA_200'] = SMA(df, 200)
-        df['EMA_9'] = EMA(df, 9)
-        df['EMA_21'] = EMA(df, 21)
-        df['EMA_50'] = EMA(df, 50)
+        # Add longer EMAs
         df['EMA_200'] = EMA(df, 200)
-        df['HMA_21'] = HMA(df, 21)
-        df['ICHIMOKU_CONVERSION'], df['ICHIMOKU_BASE'], df['ICHIMOKU_SPAN_A'], df['ICHIMOKU_SPAN_B'] = Ichimoku(df)
-        df['SUPERTREND'] = SuperTrend(df, period=14, multiplier=3)
-        df['PSAR'] = ParabolicSAR(df)
-        df['MACD'], df['MACD_SIGNAL'], df['MACD_HIST'] = MACD(df)
-        df['RSI_14'] = RSI(df, 14)
-        df['RSI_7'] = RSI(df, 7)
-        df['STOCH_14_3_K'], df['STOCH_14_3_D'] = Stochastic(df, 14, 3)
-        df['STOCH_9_6_3_K'], df['STOCH_9_6_3_D'] = Stochastic_9_6_3(df)
-        df['KDJ_K'], df['KDJ_D'], df['KDJ_J'] = KDJ(df)
-        df['WILLIAMS'] = WilliamsR(df, 25)
-        df['CCI'] = CCI(df, 20)
-        df['ROC'] = ROC(df, 14)
-        df['ADX'], df['PLUS_DI'], df['MINUS_DI'] = ADX(df, 14)
-        df['OBV'] = OBV(df)
-        df['MFI'] = MFI(df, 14)
-        df['AROON_UP'], df['AROON_DOWN'] = Aroon(df, 14)
-        df['BB_UPPER'], df['BB_MIDDLE'], df['BB_LOWER'] = Bollinger_Bands(df)
-        df['ATR'] = ATR(df, 14)
-        df['HA_CLOSE'] = HeikinAshi(df)
+        
+        # SuperTrend - Medium
+        df['SUPERTREND'] = SuperTrend(df, period=10, multiplier=3)
+        
+        # Donchian Channel
         df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df, 20)
         
-        # NEW INDICATORS
-        df['STOCH_RSI_K'], df['STOCH_RSI_D'] = Stochastic_RSI(df, 14, 3, 3)
-        df['VWAP_HLC3'] = VWAP_HLC3(df)
-        vwap, upper1, lower1, upper2, lower2 = VWAP_Bands(df, 1, 2)
-        df['VWAP'] = vwap
-        df['VWAP_UPPER_1'] = upper1
-        df['VWAP_LOWER_1'] = lower1
-        df['VWAP_UPPER_2'] = upper2
-        df['VWAP_LOWER_2'] = lower2
-        df['VOLUME_MA_20'] = Volume_MA(df, 20)
-        df['VOLUME_OSC'] = Volume_Oscillator(df, 5, 20)
-        df['VOLT_10'] = VOLT(df, 10)
+        # MFI
+        df['MFI'] = MFI(df, 14)
         
-        tdi_result = TDI(df, 13, 34, 34)
-        if len(tdi_result) == 5:
-            df['TDI_RSI'], df['TDI_UPPER'], df['TDI_LOWER'], df['TDI_SIGNAL'], df['TDI_MARKET_BASE'] = tdi_result
+        # Aroon
+        df['AROON_UP'], df['AROON_DOWN'] = Aroon(df, 14)
         
+        # Heikin Ashi
+        df['HA_CLOSE'] = HeikinAshi(df)
+    
+    # ===== SWING TIMEFRAMES (4h) - Slower, More Reliable =====
+    elif timeframe == "4h":
+        # All EMAs
+        df['EMA_200'] = EMA(df, 200)
+        
+        # Ichimoku (Heavy - only on 4h+)
+        df['ICHIMOKU_CONVERSION'], df['ICHIMOKU_BASE'], df['ICHIMOKU_SPAN_A'], df['ICHIMOKU_SPAN_B'] = Ichimoku(df)
+        
+        # SuperTrend - Slow
+        df['SUPERTREND'] = SuperTrend(df, period=14, multiplier=3)
+        
+        # Donchian Channel
+        df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df, 20)
+        
+        # MFI
+        df['MFI'] = MFI(df, 14)
+        
+        # Aroon
+        df['AROON_UP'], df['AROON_DOWN'] = Aroon(df, 14)
+        
+        # ADX for trend strength
+        df['ADX'], df['PLUS_DI'], df['MINUS_DI'] = ADX(df, 14)
+        
+        # Heikin Ashi
+        df['HA_CLOSE'] = HeikinAshi(df)
+        
+        # Fibonacci Retracement (Heavy - 4h+)
         try:
             fib_high, fib_low, fib_levels, current_level = Fibonacci_Retracement(df, 100)
             if fib_high is not None:
                 df['FIB_HIGH'] = fib_high
                 df['FIB_LOW'] = fib_low
                 df.attrs['fib_levels'] = fib_levels
-                
+        except:
+            pass
+        
+        # Fibonacci Extension (Heavy - 4h+)
+        try:
             ext_low, ext_high, retrace_low, extensions = Fibonacci_Extension(df, 100)
             if ext_low is not None:
                 df['FIB_EXT_LOW'] = ext_low
@@ -321,57 +270,37 @@ def calculate_indicators_by_timeframe(df, timeframe):
         except:
             pass
     
-    # ===== DAILY / WEEKLY (Position Trading) =====
+    # ===== POSITION TIMEFRAMES (1d, 1w) - Heaviest, Most Reliable =====
     else:  # "1d", "1w"
-        df['SMA_20'] = SMA(df, 20)
-        df['SMA_50'] = SMA(df, 50)
-        df['SMA_200'] = SMA(df, 200)
-        df['EMA_9'] = EMA(df, 9)
-        df['EMA_21'] = EMA(df, 21)
-        df['EMA_50'] = EMA(df, 50)
+        # All EMAs
         df['EMA_200'] = EMA(df, 200)
-        df['HMA_21'] = HMA(df, 21)
+        
+        # Ichimoku
         df['ICHIMOKU_CONVERSION'], df['ICHIMOKU_BASE'], df['ICHIMOKU_SPAN_A'], df['ICHIMOKU_SPAN_B'] = Ichimoku(df)
+        
+        # Multiple SuperTrends for confirmation
         df['SUPERTREND_7'] = SuperTrend(df, period=7, multiplier=3)
-        df['SUPERTREND_10'] = SuperTrend(df, period=10, multiplier=3)
         df['SUPERTREND_14'] = SuperTrend(df, period=14, multiplier=3)
-        df['PSAR'] = ParabolicSAR(df)
-        df['MACD'], df['MACD_SIGNAL'], df['MACD_HIST'] = MACD(df)
-        df['RSI_14'] = RSI(df, 14)
-        df['RSI_7'] = RSI(df, 7)
-        df['STOCH_14_3_K'], df['STOCH_14_3_D'] = Stochastic(df, 14, 3)
-        df['STOCH_9_6_3_K'], df['STOCH_9_6_3_D'] = Stochastic_9_6_3(df)
-        df['KDJ_K'], df['KDJ_D'], df['KDJ_J'] = KDJ(df)
-        df['WILLIAMS'] = WilliamsR(df, 25)
-        df['CCI'] = CCI(df, 20)
-        df['ROC'] = ROC(df, 14)
-        df['ADX'], df['PLUS_DI'], df['MINUS_DI'] = ADX(df, 14)
-        df['UO'] = UltimateOscillator(df)
-        df['OBV'] = OBV(df)
-        df['MFI'] = MFI(df, 14)
-        df['AROON_UP'], df['AROON_DOWN'] = Aroon(df, 14)
-        df['BB_UPPER'], df['BB_MIDDLE'], df['BB_LOWER'] = Bollinger_Bands(df)
-        df['ATR'] = ATR(df, 14)
-        df['HA_CLOSE'] = HeikinAshi(df)
+        
+        # Donchian Channel
         df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df, 20)
         
-        # NEW INDICATORS
-        df['STOCH_RSI_K'], df['STOCH_RSI_D'] = Stochastic_RSI(df, 14, 3, 3)
-        df['VWAP_HLC3'] = VWAP_HLC3(df)
-        vwap, upper1, lower1, upper2, lower2 = VWAP_Bands(df, 1, 2)
-        df['VWAP'] = vwap
-        df['VWAP_UPPER_1'] = upper1
-        df['VWAP_LOWER_1'] = lower1
-        df['VWAP_UPPER_2'] = upper2
-        df['VWAP_LOWER_2'] = lower2
-        df['VOLUME_MA_20'] = Volume_MA(df, 20)
-        df['VOLUME_OSC'] = Volume_Oscillator(df, 5, 20)
-        df['VOLT_10'] = VOLT(df, 10)
+        # MFI
+        df['MFI'] = MFI(df, 14)
         
-        tdi_result = TDI(df, 13, 34, 34)
-        if len(tdi_result) == 5:
-            df['TDI_RSI'], df['TDI_UPPER'], df['TDI_LOWER'], df['TDI_SIGNAL'], df['TDI_MARKET_BASE'] = tdi_result
+        # Aroon
+        df['AROON_UP'], df['AROON_DOWN'] = Aroon(df, 14)
         
+        # ADX
+        df['ADX'], df['PLUS_DI'], df['MINUS_DI'] = ADX(df, 14)
+        
+        # Ultimate Oscillator
+        df['UO'] = UltimateOscillator(df)
+        
+        # Heikin Ashi
+        df['HA_CLOSE'] = HeikinAshi(df)
+        
+        # Fibonacci (Full analysis)
         try:
             fib_high, fib_low, fib_levels, current_level = Fibonacci_Retracement(df, 200)
             if fib_high is not None:
@@ -387,10 +316,13 @@ def calculate_indicators_by_timeframe(df, timeframe):
         except:
             pass
         
+        # Market Profile (Heaviest - Only on Daily+)
         try:
-            mp_poc, mp_levels = Market_Profile(df, 20)
-            if mp_poc is not None:
-                df['MARKET_PROFILE_POC'] = mp_poc
+            poc, va_low, va_high, bins, profile = Volume_Profile(df, 12)
+            if poc is not None:
+                df['VOL_PROFILE_POC'] = poc
+                df['VOL_PROFILE_VA_LOW'] = va_low
+                df['VOL_PROFILE_VA_HIGH'] = va_high
         except:
             pass
     
@@ -408,10 +340,10 @@ def format_value(value, decimals=2):
     return str(value)
 
 # -------------------------
-# Create stock command with clean output format (no emojis)
+# Create stock command with clean output
 # -------------------------
 def create_stock_command(symbol, name, tv_symbol, interval_key):
-    """Create a command handler with clean indicator output - no emojis, step by step format"""
+    """Create a command handler with professional indicator output"""
     
     async def command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Send immediate acknowledgment
@@ -475,16 +407,15 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
                     await update.message.reply_text(f"No data found for {name}.")
                     return
             
-            # Calculate indicators based on timeframe
+            # Calculate indicators
             df = calculate_indicators_by_timeframe(df, interval_key)
             
             # Get latest values
             last = df.iloc[-1]
             prev = df.iloc[-2] if len(df) > 1 else last
             
-            # Calculate Day's Range (current day's high and low)
+            # Calculate Day's Range
             if interval_key in ["5m", "15m", "30m", "1h", "4h"]:
-                # For intraday timeframes, find today's high and low
                 today = pd.Timestamp.now().date()
                 today_data = df[df.index.date == today]
                 
@@ -492,22 +423,19 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
                     day_high = today_data['high'].max()
                     day_low = today_data['low'].min()
                 else:
-                    # If no data for today, use last 24 hours
                     day_high = df['high'].iloc[-min(24, len(df)):].max()
                     day_low = df['low'].iloc[-min(24, len(df)):].min()
             else:
-                # For daily/weekly, the current candle itself is the day
                 day_high = last['high']
                 day_low = last['low']
             
             # Format close time
             close_time = df.index[-1].strftime('%Y-%m-%d %H:%M:%S')
             
-            # Calculate change from previous close
+            # Calculate change
             change_points = last['close'] - prev['close']
             change_percent = (change_points / prev['close']) * 100 if prev['close'] != 0 else 0
             
-            # Determine change sign
             if change_points > 0:
                 change_sign = "+"
             elif change_points < 0:
@@ -515,17 +443,17 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             else:
                 change_sign = "="
             
-            # START BUILDING MESSAGE - CLEAN FORMAT
+            # BUILD MESSAGE - Professional Format
             message_lines = []
             
             # Header
             message_lines.append(f"{name} - {tv_symbol} ({interval_key})")
-            message_lines.append("=" * 40)
+            message_lines.append("=" * 50)
             message_lines.append("")
             
             # 1. MARKET OVERVIEW
             message_lines.append("1. MARKET OVERVIEW")
-            message_lines.append("-" * 20)
+            message_lines.append("-" * 30)
             message_lines.append(f"Current Price    : {format_value(last['close'])}")
             message_lines.append(f"Open Price       : {format_value(last['open'])}")
             message_lines.append(f"Previous Close   : {format_value(prev['close'])}")
@@ -538,42 +466,30 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             
             # 2. TREND INDICATORS
             message_lines.append("2. TREND INDICATORS")
-            message_lines.append("-" * 20)
+            message_lines.append("-" * 30)
             
-            # Moving Averages
-            ma_lines = []
-            if 'SMA_20' in last.index:
-                ma_lines.append(f"SMA 20           : {format_value(last['SMA_20'])}")
-            if 'SMA_50' in last.index:
-                ma_lines.append(f"SMA 50           : {format_value(last['SMA_50'])}")
-            if 'SMA_200' in last.index:
-                ma_lines.append(f"SMA 200          : {format_value(last['SMA_200'])}")
+            # EMAs
+            ema_lines = []
             if 'EMA_9' in last.index:
-                ma_lines.append(f"EMA 9            : {format_value(last['EMA_9'])}")
+                ema_lines.append(f"EMA 9            : {format_value(last['EMA_9'])}")
             if 'EMA_21' in last.index:
-                ma_lines.append(f"EMA 21           : {format_value(last['EMA_21'])}")
+                ema_lines.append(f"EMA 21           : {format_value(last['EMA_21'])}")
             if 'EMA_50' in last.index:
-                ma_lines.append(f"EMA 50           : {format_value(last['EMA_50'])}")
+                ema_lines.append(f"EMA 50           : {format_value(last['EMA_50'])}")
             if 'EMA_200' in last.index:
-                ma_lines.append(f"EMA 200          : {format_value(last['EMA_200'])}")
-            if 'HMA_9' in last.index:
-                ma_lines.append(f"HMA 9            : {format_value(last['HMA_9'])}")
-            if 'HMA_14' in last.index:
-                ma_lines.append(f"HMA 14           : {format_value(last['HMA_14'])}")
-            if 'HMA_21' in last.index:
-                ma_lines.append(f"HMA 21           : {format_value(last['HMA_21'])}")
+                ema_lines.append(f"EMA 200          : {format_value(last['EMA_200'])}")
             
-            if ma_lines:
-                message_lines.extend(ma_lines)
+            if ema_lines:
+                message_lines.extend(ema_lines)
                 message_lines.append("")
             
-            # Ichimoku Cloud
+            # Ichimoku (Higher timeframes only)
             if 'ICHIMOKU_CONVERSION' in last.index:
                 message_lines.append("Ichimoku Cloud:")
-                message_lines.append(f"  Conversion (9) : {format_value(last['ICHIMOKU_CONVERSION'])}")
-                message_lines.append(f"  Base (26)      : {format_value(last['ICHIMOKU_BASE'])}")
-                message_lines.append(f"  Span A         : {format_value(last['ICHIMOKU_SPAN_A'])}")
-                message_lines.append(f"  Span B         : {format_value(last['ICHIMOKU_SPAN_B'])}")
+                message_lines.append(f"  Conversion Line : {format_value(last['ICHIMOKU_CONVERSION'])}")
+                message_lines.append(f"  Base Line       : {format_value(last['ICHIMOKU_BASE'])}")
+                message_lines.append(f"  Span A          : {format_value(last['ICHIMOKU_SPAN_A'])}")
+                message_lines.append(f"  Span B          : {format_value(last['ICHIMOKU_SPAN_B'])}")
                 message_lines.append("")
             
             # SuperTrend
@@ -582,8 +498,6 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
                 st_lines.append(f"SuperTrend       : {format_value(last['SUPERTREND'])}")
             if 'SUPERTREND_7' in last.index:
                 st_lines.append(f"SuperTrend(7)    : {format_value(last['SUPERTREND_7'])}")
-            if 'SUPERTREND_10' in last.index:
-                st_lines.append(f"SuperTrend(10)   : {format_value(last['SUPERTREND_10'])}")
             if 'SUPERTREND_14' in last.index:
                 st_lines.append(f"SuperTrend(14)   : {format_value(last['SUPERTREND_14'])}")
             
@@ -591,14 +505,14 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
                 message_lines.extend(st_lines)
                 message_lines.append("")
             
-            # Parabolic SAR
-            if 'PSAR' in last.index:
-                message_lines.append(f"Parabolic SAR    : {format_value(last['PSAR'])}")
+            # Heikin Ashi
+            if 'HA_CLOSE' in last.index:
+                message_lines.append(f"Heikin Ashi Close: {format_value(last['HA_CLOSE'])}")
                 message_lines.append("")
             
-            # 3. MOMENTUM OSCILLATORS
-            message_lines.append("3. MOMENTUM OSCILLATORS")
-            message_lines.append("-" * 20)
+            # 3. MOMENTUM INDICATORS
+            message_lines.append("3. MOMENTUM INDICATORS")
+            message_lines.append("-" * 30)
             
             # MACD
             if 'MACD' in last.index:
@@ -609,76 +523,11 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
                 message_lines.append("")
             
             # RSI
-            rsi_lines = []
-            if 'RSI_14' in last.index:
-                rsi_lines.append(f"RSI (14)         : {format_value(last['RSI_14'])}")
-            if 'RSI_7' in last.index:
-                rsi_lines.append(f"RSI (7)          : {format_value(last['RSI_7'])}")
-            
-            if rsi_lines:
-                message_lines.extend(rsi_lines)
+            if 'RSI' in last.index:
+                message_lines.append(f"RSI (14)         : {format_value(last['RSI'])}")
                 message_lines.append("")
             
-            # Stochastic 14,3
-            if 'STOCH_14_3_K' in last.index:
-                message_lines.append("Stochastic (14,3):")
-                message_lines.append(f"  %K             : {format_value(last['STOCH_14_3_K'])}")
-                message_lines.append(f"  %D             : {format_value(last['STOCH_14_3_D'])}")
-                message_lines.append("")
-            
-            # Stochastic 9,6,3
-            if 'STOCH_9_6_3_K' in last.index:
-                message_lines.append("Stochastic (9,6,3):")
-                message_lines.append(f"  %K             : {format_value(last['STOCH_9_6_3_K'])}")
-                message_lines.append(f"  %D             : {format_value(last['STOCH_9_6_3_D'])}")
-                message_lines.append("")
-            
-            # Stochastic RSI
-            if 'STOCH_RSI_K' in last.index:
-                message_lines.append("Stochastic RSI (14,3,3):")
-                message_lines.append(f"  Stoch RSI %K   : {format_value(last['STOCH_RSI_K'])}")
-                message_lines.append(f"  Stoch RSI %D   : {format_value(last['STOCH_RSI_D'])}")
-                message_lines.append("")
-            
-            # KDJ
-            if 'KDJ_K' in last.index:
-                message_lines.append("KDJ (9,3,3):")
-                message_lines.append(f"  K              : {format_value(last['KDJ_K'])}")
-                message_lines.append(f"  D              : {format_value(last['KDJ_D'])}")
-                message_lines.append(f"  J              : {format_value(last['KDJ_J'])}")
-                message_lines.append("")
-            
-            # Williams %R
-            if 'WILLIAMS' in last.index:
-                message_lines.append(f"Williams %R (25) : {format_value(last['WILLIAMS'])}")
-                message_lines.append("")
-            
-            # CCI
-            if 'CCI' in last.index:
-                message_lines.append(f"CCI (14)         : {format_value(last['CCI'])}")
-                message_lines.append("")
-            
-            # ROC
-            if 'ROC' in last.index:
-                message_lines.append(f"ROC (14)         : {format_value(last['ROC'])}%")
-                message_lines.append("")
-            
-            # TDI
-            if 'TDI_RSI' in last.index:
-                message_lines.append("TDI (13,34,34):")
-                message_lines.append(f"  TDI RSI        : {format_value(last['TDI_RSI'])}")
-                message_lines.append(f"  Upper Band     : {format_value(last['TDI_UPPER'])}")
-                message_lines.append(f"  Lower Band     : {format_value(last['TDI_LOWER'])}")
-                message_lines.append(f"  Signal Line    : {format_value(last['TDI_SIGNAL'])}")
-                message_lines.append(f"  Market Base    : {format_value(last['TDI_MARKET_BASE'])}")
-                message_lines.append("")
-            
-            # Ultimate Oscillator
-            if 'UO' in last.index:
-                message_lines.append(f"Ultimate Osc     : {format_value(last['UO'])}")
-                message_lines.append("")
-            
-            # ADX
+            # ADX (Higher timeframes)
             if 'ADX' in last.index:
                 message_lines.append("ADX (14):")
                 message_lines.append(f"  ADX            : {format_value(last['ADX'])}")
@@ -686,9 +535,14 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
                 message_lines.append(f"  -DI            : {format_value(last['MINUS_DI'])}")
                 message_lines.append("")
             
+            # Ultimate Oscillator (Daily+)
+            if 'UO' in last.index:
+                message_lines.append(f"Ultimate Osc     : {format_value(last['UO'])}")
+                message_lines.append("")
+            
             # 4. VOLUME & MONEY FLOW
             message_lines.append("4. VOLUME & MONEY FLOW")
-            message_lines.append("-" * 20)
+            message_lines.append("-" * 30)
             
             # OBV
             if 'OBV' in last.index:
@@ -697,41 +551,28 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             
             # MFI
             if 'MFI' in last.index:
-                message_lines.append(f"MFI (14)         : {format_value(last['MFI'])}")
+                message_lines.append(f"MFI              : {format_value(last['MFI'])}")
                 message_lines.append("")
             
             # Volume Analysis
-            vol_lines = []
-            if 'VOLUME_MA_20' in last.index:
-                volume_ratio = last['volume'] / last['VOLUME_MA_20'] if last['VOLUME_MA_20'] > 0 else 0
-                vol_lines.append(f"Volume MA(20)    : {format_value(last['VOLUME_MA_20'], 0)}")
-                vol_lines.append(f"Volume Ratio     : {format_value(volume_ratio, 2)}x")
-            
-            if 'VOLUME_OSC' in last.index:
-                vol_lines.append(f"Volume Oscillator: {format_value(last['VOLUME_OSC'], 2)}%")
-            
-            if vol_lines:
-                message_lines.extend(vol_lines)
+            if 'VOLUME_MA' in last.index:
+                volume_ratio = last['volume'] / last['VOLUME_MA'] if last['VOLUME_MA'] > 0 else 0
+                message_lines.append(f"Volume MA(20)    : {format_value(last['VOLUME_MA'], 0)}")
+                message_lines.append(f"Volume Ratio     : {format_value(volume_ratio, 2)}x")
+                
+                if 'VOLUME_OSC' in last.index:
+                    message_lines.append(f"Volume Oscillator: {format_value(last['VOLUME_OSC'], 2)}%")
                 message_lines.append("")
             
             # VWAP
-            vwap_lines = []
             if 'VWAP' in last.index:
-                vwap_lines.append(f"VWAP (HLC3)      : {format_value(last['VWAP'])}")
-            if 'VWAP_UPPER_1' in last.index:
-                vwap_lines.append(f"VWAP +1σ         : {format_value(last['VWAP_UPPER_1'])}")
-                vwap_lines.append(f"VWAP -1σ         : {format_value(last['VWAP_LOWER_1'])}")
-            if 'VWAP_UPPER_2' in last.index:
-                vwap_lines.append(f"VWAP +2σ         : {format_value(last['VWAP_UPPER_2'])}")
-                vwap_lines.append(f"VWAP -2σ         : {format_value(last['VWAP_LOWER_2'])}")
-            
-            if vwap_lines:
-                message_lines.extend(vwap_lines)
-                message_lines.append("")
-            
-            # VOLT
-            if 'VOLT_10' in last.index:
-                message_lines.append(f"VOLT(10)         : {format_value(last['VOLT_10'])}")
+                message_lines.append(f"VWAP (HLC3)      : {format_value(last['VWAP'])}")
+                if 'VWAP_UPPER_1' in last.index:
+                    message_lines.append(f"VWAP +1σ         : {format_value(last['VWAP_UPPER_1'])}")
+                    message_lines.append(f"VWAP -1σ         : {format_value(last['VWAP_LOWER_1'])}")
+                if 'VWAP_UPPER_2' in last.index:
+                    message_lines.append(f"VWAP +2σ         : {format_value(last['VWAP_UPPER_2'])}")
+                    message_lines.append(f"VWAP -2σ         : {format_value(last['VWAP_LOWER_2'])}")
                 message_lines.append("")
             
             # Aroon
@@ -741,9 +582,9 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
                 message_lines.append(f"  Aroon Down     : {format_value(last['AROON_DOWN'])}")
                 message_lines.append("")
             
-            # 5. VOLATILITY & RANGE
-            message_lines.append("5. VOLATILITY & RANGE")
-            message_lines.append("-" * 20)
+            # 5. VOLATILITY & SUPPORT/RESISTANCE
+            message_lines.append("5. VOLATILITY & SUPPORT/RESISTANCE")
+            message_lines.append("-" * 30)
             
             # Bollinger Bands
             if 'BB_UPPER' in last.index:
@@ -760,22 +601,17 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
                 message_lines.append(f"ATR (14)         : {format_value(last['ATR'])}")
                 message_lines.append("")
             
-            # Heikin Ashi
-            if 'HA_CLOSE' in last.index:
-                message_lines.append(f"Heikin Ashi Close: {format_value(last['HA_CLOSE'])}")
-                message_lines.append("")
-            
             # Donchian Channel
             if 'DC_UPPER' in last.index:
-                message_lines.append("Donchian Channel (20):")
-                message_lines.append(f"  Upper          : {format_value(last['DC_UPPER'])}")
-                message_lines.append(f"  Middle         : {format_value(last['DC_MIDDLE'])}")
-                message_lines.append(f"  Lower          : {format_value(last['DC_LOWER'])}")
+                message_lines.append("Donchian Channel:")
+                message_lines.append(f"  Upper (20)     : {format_value(last['DC_UPPER'])}")
+                message_lines.append(f"  Middle (20)    : {format_value(last['DC_MIDDLE'])}")
+                message_lines.append(f"  Lower (20)     : {format_value(last['DC_LOWER'])}")
                 message_lines.append("")
             
-            # Fibonacci (if available)
+            # Fibonacci Levels (Higher timeframes)
             if 'FIB_HIGH' in last.index:
-                message_lines.append("Fibonacci Levels:")
+                message_lines.append("Fibonacci Retracement:")
                 message_lines.append(f"  Swing High     : {format_value(last['FIB_HIGH'])}")
                 message_lines.append(f"  Swing Low      : {format_value(last['FIB_LOW'])}")
                 
@@ -785,10 +621,30 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
                         message_lines.append(f"  Fib {level*100:.1f}%     : {format_value(price)}")
                 message_lines.append("")
             
+            if 'FIB_EXT_LOW' in last.index:
+                message_lines.append("Fibonacci Extension:")
+                message_lines.append(f"  Start Low      : {format_value(last['FIB_EXT_LOW'])}")
+                message_lines.append(f"  Start High     : {format_value(last['FIB_EXT_HIGH'])}")
+                
+                if hasattr(df, 'attrs') and 'fib_extensions' in df.attrs:
+                    extensions = df.attrs['fib_extensions']
+                    for level, price in sorted(extensions.items()):
+                        message_lines.append(f"  Ext {level*100:.1f}%    : {format_value(price)}")
+                message_lines.append("")
+            
+            # Volume Profile (Daily+)
+            if 'VOL_PROFILE_POC' in last.index and not pd.isna(last['VOL_PROFILE_POC']):
+                message_lines.append("Volume Profile:")
+                message_lines.append(f"  POC            : {format_value(last['VOL_PROFILE_POC'])}")
+                if not pd.isna(last['VOL_PROFILE_VA_LOW']):
+                    message_lines.append(f"  Value Area Low : {format_value(last['VOL_PROFILE_VA_LOW'])}")
+                    message_lines.append(f"  Value Area High: {format_value(last['VOL_PROFILE_VA_HIGH'])}")
+                message_lines.append("")
+            
             # Join all lines
             message = "\n".join(message_lines)
             
-            # Split message if too long
+            # Split if too long
             if len(message) > 4096:
                 await update.message.reply_text(message[:4096])
                 await update.message.reply_text(message[4096:])
@@ -802,14 +658,13 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
     return command
 
 # -------------------------
-# Text Command - Returns the analysis template
+# Text Command
 # -------------------------
 async def text_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /text command - returns the analysis template for copying"""
+    """Handle /text command - returns analysis template"""
     try:
         template = get_analysis_template()
         await update.message.reply_text(template)
-        logger.info(f"Text command used by user {update.effective_user.id}")
     except Exception as e:
         logger.error(f"Error in text command: {e}")
         await update.message.reply_text("Error retrieving analysis template. Please try again.")
@@ -818,16 +673,16 @@ async def text_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Start/Ping Commands
 # -------------------------
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command with simple response"""
-    
+    """Handle /start command"""
     start_time = time.time()
     msg = await update.message.reply_text("Checking...")
     end_time = time.time()
     ping_time = round((end_time - start_time) * 1000, 2)
     
     await msg.edit_text(
-        f"Your PSX Bot is working! ✅\n"
-        f"Ping response time: {ping_time}ms"
+        f"PSX Bot is Working!\n"
+        f"Response time: {ping_time}ms\n\n"
+        f"Use /commands to see all available symbols and timeframes."
     )
 
 async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -839,15 +694,16 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.edit_text(f"Pong! Response time: {latency}ms")
 
 # -------------------------
-# Commands List Feature
+# Commands List
 # -------------------------
 async def list_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /commands - show all available commands"""
+    """Show all available commands"""
     
-    message = "📋 Available Commands 📋\n\n"
+    message = "AVAILABLE COMMANDS\n"
+    message = "=" * 40 + "\n\n"
     
     for stock in stocks + [kse100] + [gold]:
-        message += f"{stock['symbol']}\n"
+        message += f"{stock['symbol']} - {stock['name']}\n"
         
         timeframes = ['5m', '15m', '30m', '1h', '4h', '1d', '1w']
         commands_list = []
@@ -855,15 +711,13 @@ async def list_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for tf in timeframes:
             cmd = f"/{stock['symbol'].lower()}_{tf}"
             commands_list.append(cmd)
+        
+        message += f"{'  '.join(commands_list)}\n\n"
     
-        message += f"{' ,  '.join(commands_list)}\n\n"
+    message += "OTHER COMMANDS:\n"
+    message += "/start  /ping  /text  /commands\n"
     
-    message += "━━━━━━━━━━━━━━━━━━━━━\n"
-    message += "Other Commands:\n"
-    message += "/start  /ping  /text\n\n"
-    message += "Tip: Click on any command above to execute it!"
-    
-    await update.message.reply_text(message, parse_mode='Markdown')
+    await update.message.reply_text(message)
 
 # -------------------------
 # Build Telegram Application
@@ -878,9 +732,9 @@ telegram_app.add_handler(CommandHandler("start", start_command))
 telegram_app.add_handler(CommandHandler("ping", ping_command))
 telegram_app.add_handler(CommandHandler("text", text_command))
 telegram_app.add_handler(CommandHandler("commands", list_commands))
-logger.info("Added commands: /start, /ping, /text, /commands")
+logger.info("Added base commands")
 
-# Add all stock commands for all timeframes
+# Add all stock commands
 for stock in stocks + [kse100] + [gold]:
     for interval_key in interval_map.keys():
         cmd_name = f"{stock['symbol'].lower()}_{interval_key}"
@@ -901,13 +755,12 @@ for stock in stocks + [kse100] + [gold]:
 # Error Handler
 # -------------------------
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle errors gracefully"""
+    """Handle errors"""
     logger.error(f"Error: {context.error}", exc_info=True)
     try:
         if update and update.effective_message:
             await update.effective_message.reply_text(
-                "An error occurred. Please try again.\n"
-                "If the problem persists, try a different timeframe or contact support."
+                "An error occurred. Please try again."
             )
     except Exception as e:
         logger.error(f"Error in error handler: {e}")
@@ -941,7 +794,6 @@ if __name__ == "__main__":
         flask_thread.start()
         logger.info(f"Flask server started on port {os.environ.get('PORT', 10000)}")
         
-        # Small delay
         time.sleep(2)
         
         # Start Telegram bot

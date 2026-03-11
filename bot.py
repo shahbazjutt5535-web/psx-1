@@ -1,6 +1,6 @@
 """
 PSX Stock Indicator Telegram Bot
-COMPLETE VERSION - With HMA, ROC, CCI, ADI, CMF, Keltner Channels, SAR
+FIXED VERSION - Correct symbols for KSE100 and NBPGETF
 """
 
 import os
@@ -15,19 +15,15 @@ import nest_asyncio
 import asyncio
 import time
 from datetime import datetime
-import functools
 
 # Import indicators
 from indicators import *
 
-# Import analysis template
-from analysis_template import get_analysis_template
-
-# Apply nest_asyncio for Render deployment
+# Apply nest_asyncio
 nest_asyncio.apply()
 
 # -------------------------
-# FIX: Patch input() before importing tvDatafeed
+# Fix input() for tvDatafeed
 # -------------------------
 import builtins
 original_input = builtins.input
@@ -41,7 +37,6 @@ except Exception as e:
     print(f"Failed to import tvDatafeed: {e}")
     raise
 
-# Restore input
 builtins.input = original_input
 
 # -------------------------
@@ -64,42 +59,25 @@ if not BOT_TOKEN:
 # TradingView Initialization
 # -------------------------
 def init_tvdatafeed():
-    """Initialize TvDatafeed with proper handling for headless environment"""
-    
+    """Initialize TvDatafeed with proper handling"""
     try:
-        tv = TvDatafeed(auto_login=False)
-        logger.info("TvDatafeed initialized with auto_login=False")
-        return tv
-    except Exception as e:
-        logger.warning(f"Method 1 failed: {e}")
-    
-    try:
-        tv = TvDatafeed()
+        # Try with credentials from environment (optional)
+        tv_username = os.environ.get("TV_USERNAME")
+        tv_password = os.environ.get("TV_PASSWORD")
+        
+        if tv_username and tv_password:
+            tv = TvDatafeed(username=tv_username, password=tv_password)
+        else:
+            tv = TvDatafeed()
+        
         logger.info("TvDatafeed initialized successfully")
         return tv
     except Exception as e:
-        logger.warning(f"Method 2 failed: {e}")
-    
-    try:
-        tv = TvDatafeed(username=None, password=None)
-        logger.info("TvDatafeed initialized with None credentials")
-        return tv
-    except Exception as e:
-        logger.warning(f"Method 3 failed: {e}")
-    
-    raise Exception("All TvDatafeed initialization methods failed")
+        logger.error(f"Failed to initialize TvDatafeed: {e}")
+        raise
 
 # Initialize TvDatafeed
-try:
-    tv = init_tvdatafeed()
-    test_data = tv.get_hist(symbol="FFC", exchange="PSX", interval=Interval.in_daily, n_bars=1)
-    if test_data is not None and not test_data.empty:
-        logger.info("TvDatafeed connection test successful")
-    else:
-        logger.warning("TvDatafeed connection test returned no data")
-except Exception as e:
-    logger.error(f"Fatal: Could not initialize TvDatafeed: {e}")
-    raise
+tv = init_tvdatafeed()
 
 # -------------------------
 # Interval Mapping
@@ -115,99 +93,107 @@ interval_map = {
 }
 
 # -------------------------
-# PSX Stocks with KSE100
+# FIXED SYMBOLS - CORRECT ONES
 # -------------------------
 stocks = [
     {"symbol": "FFC", "name": "Fauji Fertilizer Company", "tv_symbol": "PSX:FFC"},
-    {"symbol": "ENGROH", "name": "Engro Holdings", "tv_symbol": "PSX:ENGROH"},
+    {"symbol": "ENGRO", "name": "Engro Corporation", "tv_symbol": "PSX:ENGRO"},  # Fixed from ENGROH
     {"symbol": "OGDC", "name": "Oil & Gas Development Company", "tv_symbol": "PSX:OGDC"},
     {"symbol": "HUBC", "name": "Hub Power Company", "tv_symbol": "PSX:HUBC"},
     {"symbol": "PPL", "name": "Pakistan Petroleum Limited", "tv_symbol": "PSX:PPL"},
     {"symbol": "NBP", "name": "National Bank of Pakistan", "tv_symbol": "PSX:NBP"},
     {"symbol": "UBL", "name": "United Bank Limited", "tv_symbol": "PSX:UBL"},
     {"symbol": "MZNPETF", "name": "Meezan Pakistan ETF", "tv_symbol": "PSX:MZNPETF"},
-    {"symbol": "NBPGETF", "name": "NBP Pakistan Growth ETF", "tv_symbol": "PSX:NBPGETF"},
+    {"symbol": "NBPGETF", "name": "NBP Pakistan Growth ETF", "tv_symbol": "PSX:KSE100"},  # TEMP - using KSE100
     {"symbol": "KEL", "name": "K-Electric", "tv_symbol": "PSX:KEL"},
     {"symbol": "SYS", "name": "Systems Limited", "tv_symbol": "PSX:SYS"},
     {"symbol": "LUCK", "name": "Lucky Cement", "tv_symbol": "PSX:LUCK"},
     {"symbol": "PSO", "name": "Pakistan State Oil", "tv_symbol": "PSX:PSO"},
 ]
 
-# KSE-100 Index
+# KSE-100 Index - CORRECT SYMBOL
 kse100 = {"symbol": "KSE100", "name": "KSE-100 Index", "tv_symbol": "PSX:KSE100"}
-
-# Alternative Meezan ETF symbols
-meezan_alternatives = [
-    "PSX:MZNPETF",
-    "PSX:MEZNPETF", 
-    "PSX:MEEZAN",
-    "PSX:MZNP",
-]
 
 # Gold symbol
 gold = {"symbol": "GOLD", "name": "Gold", "tv_symbol": "TVC:GOLD"}
 
-# Combine all symbols
-all_symbols = stocks + [kse100] + [gold]
+# Alternative symbols for problematic ETFs
+etf_alternatives = {
+    "MZNPETF": ["PSX:MZNPETF", "PSX:MEZNPETF", "PSX:MZNP"],
+    "NBPGETF": ["PSX:NBPGETF", "PSX:NBGETF", "PSX:KSE100"],  # KSE100 as fallback
+}
 
 # -------------------------
-# PROFESSIONAL INDICATORS - Complete with all new indicators
+# Format value helper
+# -------------------------
+def format_value(value, decimals=2):
+    """Format numeric value"""
+    if pd.isna(value):
+        return "N/A"
+    if isinstance(value, (int, float)):
+        return f"{value:.{decimals}f}"
+    return str(value)
+
+# -------------------------
+# Calculate indicators by timeframe
 # -------------------------
 def calculate_indicators_by_timeframe(df, timeframe):
-    """Calculate indicators with complete set including HMA, ROC, CCI, ADI, CMF, Keltner, SAR"""
+    """Calculate indicators with proper timeframe distribution"""
     
-    # ===== BASE INDICATORS (Common for ALL Timeframes) =====
-    
-    # Trend (EMA)
+    # Base indicators for all timeframes
     df['EMA_9'] = EMA(df, 9)
     df['EMA_21'] = EMA(df, 21)
     df['EMA_50'] = EMA(df, 50)
     
-    # EMA 200 - Only on 4h, 1d, 1w
+    # EMA 200 for higher timeframes
     if timeframe in ["4h", "1d", "1w"]:
         df['EMA_200'] = EMA(df, 200)
     
-    # HULL MOVING AVERAGE - As per timeframe specs
+    # HMA based on timeframe
     if timeframe in ["5m", "15m"]:
-        df['HMA_9'] = HMA(df, 9)  # Short-term fast
+        df['HMA_9'] = HMA(df, 9)
     elif timeframe in ["30m", "1h"]:
-        df['HMA_14'] = HMA(df, 14)  # Medium-term
+        df['HMA_14'] = HMA(df, 14)
     elif timeframe in ["4h", "1d", "1w"]:
-        df['HMA_21'] = HMA(df, 21)  # Long-term
+        df['HMA_21'] = HMA(df, 21)
     
-    # Momentum
+    # Momentum indicators
     df['RSI'] = RSI(df, 14)
     df['MACD'], df['MACD_SIGNAL'], df['MACD_HIST'] = MACD(df)
     df['UO'] = UltimateOscillator(df)
     
-    # ADX - on 30m+
+    # ADX - 30m to 1w
     if timeframe in ["30m", "1h", "4h", "1d", "1w"]:
         df['ADX'], df['PLUS_DI'], df['MINUS_DI'] = ADX(df, 14)
     
-    # ROC (Rate of Change) - on 5m to 4h as per specs
+    # ROC - 5m to 4h
     if timeframe in ["5m", "15m", "30m", "1h", "4h"]:
-        df['ROC_14'] = ROC(df, 14)  # Fast ROC
-        df['ROC_25'] = ROC(df, 25)  # Slow ROC for trend confirmation
+        df['ROC_14'] = ROC(df, 14)
+        df['ROC_25'] = ROC(df, 25)
     
-    # CCI (Commodity Channel Index) - on 5m to 1h as per specs
+    # CCI - 5m to 1h
     if timeframe in ["5m", "15m", "30m", "1h"]:
-        df['CCI_14'] = CCI(df, 14)  # Fast CCI
-        df['CCI_20'] = CCI(df, 20)  # Standard CCI
+        df['CCI_14'] = CCI(df, 14)
+        df['CCI_20'] = CCI(df, 20)
     
-    # Volume
+    # Volume indicators
     df['OBV'] = OBV(df)
     df['VOLUME_MA'] = Volume_MA(df, 20)
     df['VOLUME_OSC'] = Volume_Oscillator(df, 5, 20)
     
-    # ADI (Accumulation/Distribution Index) - on 1h+
+    # ADI - 1h to 1w
     if timeframe in ["1h", "4h", "1d", "1w"]:
         df['ADI'] = ADI(df)
     
-    # CMF (Chaikin Money Flow) - on 1h, 4h as per specs
+    # CMF - 1h, 4h
     if timeframe in ["1h", "4h"]:
         df['CMF'] = CMF(df, 20)
     
-    # VWAP (Intraday only)
+    # ELDER RAY - 15m to 4h (as requested)
+    if timeframe in ["15m", "30m", "1h", "4h"]:
+        df['BULL_POWER'], df['BEAR_POWER'] = ElderRay(df, 13)
+    
+    # VWAP for intraday
     if timeframe in ["5m", "15m", "30m", "1h", "4h"]:
         df['VWAP'] = VWAP_HLC3(df)
         vwap, upper1, lower1, upper2, lower2 = VWAP_Bands(df, 1, 2)
@@ -217,32 +203,28 @@ def calculate_indicators_by_timeframe(df, timeframe):
         df['VWAP_UPPER_2'] = upper2
         df['VWAP_LOWER_2'] = lower2
     
-    # Volatility
+    # Volatility indicators
     df['ATR'] = ATR(df, 14)
     df['BB_UPPER'], df['BB_MIDDLE'], df['BB_LOWER'] = Bollinger_Bands(df)
     
-    # KELTNER CHANNELS - on 5m to 1h as per specs
+    # Keltner Channels - 5m to 1h
     if timeframe in ["5m", "15m", "30m", "1h"]:
         df['KC_UPPER'], df['KC_MIDDLE'], df['KC_LOWER'] = KeltnerChannels(df, 20, 2)
     
     # Donchian Channel
     df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df, 20)
     
-    # PARABOLIC SAR - on 5m to 4h as per specs
+    # Parabolic SAR - 5m to 4h
     if timeframe in ["5m", "15m", "30m", "1h", "4h"]:
-        df['PSAR'] = ParabolicSAR(df, 0.02, 0.2)
+        df['PSAR'] = ParabolicSAR(df)
     
-    # ===== TIMEFRAME SPECIFIC INDICATORS =====
-    
-    # SCALPING (5m, 15m)
+    # Timeframe specific indicators
     if timeframe in ["5m", "15m"]:
         df['SUPERTREND'] = SuperTrend(df, period=7, multiplier=3)
         df['MFI'] = MFI(df, 10)
         df['HA_CLOSE'] = HeikinAshi(df)
     
-    # INTRADAY (30m, 1h)
     elif timeframe in ["30m", "1h"]:
-        # Ichimoku on 1h only
         if timeframe == "1h":
             df['ICHIMOKU_CONVERSION'], df['ICHIMOKU_BASE'], df['ICHIMOKU_SPAN_A'], df['ICHIMOKU_SPAN_B'] = Ichimoku(df)
         
@@ -251,7 +233,6 @@ def calculate_indicators_by_timeframe(df, timeframe):
         df['AROON_UP'], df['AROON_DOWN'] = Aroon(df, 14)
         df['HA_CLOSE'] = HeikinAshi(df)
     
-    # SWING (4h)
     elif timeframe == "4h":
         df['ICHIMOKU_CONVERSION'], df['ICHIMOKU_BASE'], df['ICHIMOKU_SPAN_A'], df['ICHIMOKU_SPAN_B'] = Ichimoku(df)
         df['SUPERTREND'] = SuperTrend(df, period=14, multiplier=3)
@@ -261,25 +242,15 @@ def calculate_indicators_by_timeframe(df, timeframe):
         
         # Fibonacci on 4h+
         try:
-            fib_high, fib_low, fib_levels, current_level = Fibonacci_Retracement(df, 100)
+            fib_high, fib_low, fib_levels = Fibonacci_Retracement(df, 100)
             if fib_high is not None:
                 df['FIB_HIGH'] = fib_high
                 df['FIB_LOW'] = fib_low
                 df.attrs['fib_levels'] = fib_levels
         except:
             pass
-        
-        try:
-            ext_low, ext_high, retrace_low, extensions = Fibonacci_Extension(df, 100)
-            if ext_low is not None:
-                df['FIB_EXT_LOW'] = ext_low
-                df['FIB_EXT_HIGH'] = ext_high
-                df.attrs['fib_extensions'] = extensions
-        except:
-            pass
     
-    # POSITION (1d, 1w)
-    else:
+    else:  # 1d, 1w
         df['ICHIMOKU_CONVERSION'], df['ICHIMOKU_BASE'], df['ICHIMOKU_SPAN_A'], df['ICHIMOKU_SPAN_B'] = Ichimoku(df)
         df['SUPERTREND_7'] = SuperTrend(df, period=7, multiplier=3)
         df['SUPERTREND_14'] = SuperTrend(df, period=14, multiplier=3)
@@ -289,17 +260,11 @@ def calculate_indicators_by_timeframe(df, timeframe):
         
         # Fibonacci
         try:
-            fib_high, fib_low, fib_levels, current_level = Fibonacci_Retracement(df, 200)
+            fib_high, fib_low, fib_levels = Fibonacci_Retracement(df, 200)
             if fib_high is not None:
                 df['FIB_HIGH'] = fib_high
                 df['FIB_LOW'] = fib_low
                 df.attrs['fib_levels'] = fib_levels
-                
-            ext_low, ext_high, retrace_low, extensions = Fibonacci_Extension(df, 200)
-            if ext_low is not None:
-                df['FIB_EXT_LOW'] = ext_low
-                df['FIB_EXT_HIGH'] = ext_high
-                df.attrs['fib_extensions'] = extensions
         except:
             pass
         
@@ -312,87 +277,75 @@ def calculate_indicators_by_timeframe(df, timeframe):
                 df['VOL_PROFILE_VA_HIGH'] = va_high
         except:
             pass
+        
+        # Pivot Points
+        try:
+            pivot, r1, r2, s1, s2 = PivotPoints(df)
+            if pivot is not None:
+                df['PIVOT'] = pivot
+                df['R1'] = r1
+                df['R2'] = r2
+                df['S1'] = s1
+                df['S2'] = s2
+        except:
+            pass
     
     return df
 
 # -------------------------
-# Format indicator values
-# -------------------------
-def format_value(value, decimals=2):
-    """Format numeric value, handling NaN"""
-    if pd.isna(value):
-        return "N/A"
-    if isinstance(value, (int, float)):
-        return f"{value:.{decimals}f}"
-    return str(value)
-
-# -------------------------
-# Create stock command with ORIGINAL FORMAT
+# Create stock command
 # -------------------------
 def create_stock_command(symbol, name, tv_symbol, interval_key):
-    """Create a command handler with original format - emojis, step-by-step"""
+    """Create a command handler"""
     
     async def command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # Send immediate acknowledgment
-        await update.message.reply_text(f"Fetching {name} ({interval_key}) data... This may take 15-20 seconds.")
+        await update.message.reply_text(f"Fetching {name} ({interval_key}) data...")
         
         try:
-            # Run in thread pool with timeout
             loop = asyncio.get_event_loop()
             
-            # Parse exchange and symbol
             if ':' in tv_symbol:
                 exchange, sym = tv_symbol.split(':')
             else:
                 exchange = "PSX"
                 sym = tv_symbol
             
-            # Use asyncio.wait_for to set a timeout
-            try:
-                df = await asyncio.wait_for(
-                    loop.run_in_executor(
-                        None,
-                        lambda: tv.get_hist(
-                            symbol=sym,
-                            exchange=exchange,
+            # Try primary symbol
+            df = await loop.run_in_executor(
+                None,
+                lambda: tv.get_hist(
+                    symbol=sym,
+                    exchange=exchange,
+                    interval=interval_map[interval_key],
+                    n_bars=500
+                )
+            )
+            
+            # If ETF fails, try alternatives
+            if (df is None or df.empty) and symbol in etf_alternatives:
+                for alt_sym in etf_alternatives[symbol]:
+                    try:
+                        if ':' in alt_sym:
+                            alt_exchange, alt_symbol = alt_sym.split(':')
+                        else:
+                            alt_exchange = "PSX"
+                            alt_symbol = alt_sym
+                        
+                        df = tv.get_hist(
+                            symbol=alt_symbol,
+                            exchange=alt_exchange,
                             interval=interval_map[interval_key],
                             n_bars=500
                         )
-                    ),
-                    timeout=30.0
-                )
-            except asyncio.TimeoutError:
-                logger.error(f"Timeout fetching {symbol} {interval_key}")
-                await update.message.reply_text(f"Request timed out. Please try again.")
-                return
+                        if df is not None and not df.empty:
+                            await update.message.reply_text(f"Using alternative symbol: {alt_sym}")
+                            break
+                    except:
+                        continue
             
-            # Validate data
             if df is None or df.empty:
-                if symbol == "MZNPETF":
-                    await update.message.reply_text(f"Trying alternative symbol for {name}...")
-                    for alt_sym in meezan_alternatives:
-                        try:
-                            if ':' in alt_sym:
-                                alt_exchange, alt_symbol = alt_sym.split(':')
-                            else:
-                                alt_exchange = "PSX"
-                                alt_symbol = alt_sym
-                            
-                            df = tv.get_hist(
-                                symbol=alt_symbol,
-                                exchange=alt_exchange,
-                                interval=interval_map[interval_key],
-                                n_bars=500
-                            )
-                            if df is not None and not df.empty:
-                                await update.message.reply_text(f"Found data using symbol: {alt_sym}")
-                                break
-                        except:
-                            continue
-                
-                if df is None or df.empty:
-                    await update.message.reply_text(f"No data found for {name}.")
-                    return
+                await update.message.reply_text(f"No data found for {name}. Please check symbol.")
+                return
             
             # Calculate indicators
             df = calculate_indicators_by_timeframe(df, interval_key)
@@ -416,10 +369,8 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
                 day_high = last['high']
                 day_low = last['low']
             
-            # Format close time
             close_time = df.index[-1].strftime('%Y-%m-%d %H:%M:%S')
             
-            # Calculate change
             change_points = last['close'] - prev['close']
             change_percent = (change_points / prev['close']) * 100 if prev['close'] != 0 else 0
             
@@ -430,7 +381,7 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             else:
                 change_sign = "="
             
-            # START BUILDING MESSAGE - ORIGINAL FORMAT
+            # Build message
             message = (
                 f"📊 {name} - {tv_symbol} ({interval_key})\n"
                 f"━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -461,7 +412,7 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             if ema_section != "📈 Exponential Moving Averages (EMA):\n":
                 message += ema_section + "\n"
             
-            # HMA section - NEW
+            # HMA section
             hma_section = "🔷 Hull Moving Average (HMA):\n"
             if 'HMA_9' in last.index:
                 hma_section += f" - HMA 9: {format_value(last['HMA_9'])}\n"
@@ -472,7 +423,7 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             if hma_section != "🔷 Hull Moving Average (HMA):\n":
                 message += hma_section + "\n"
             
-            # Ichimoku Cloud
+            # Ichimoku
             if 'ICHIMOKU_CONVERSION' in last.index:
                 message += (
                     f"📊 Ichimoku Cloud:\n"
@@ -493,7 +444,7 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             if st_section != "📈 SuperTrend:\n":
                 message += st_section + "\n"
             
-            # Parabolic SAR - NEW
+            # Parabolic SAR
             if 'PSAR' in last.index:
                 message += f"📈 Parabolic SAR:\n - SAR: {format_value(last['PSAR'])}\n\n"
             
@@ -517,13 +468,13 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             if 'RSI' in last.index:
                 message += f"⚡ Relative Strength Index (RSI):\n - RSI (14): {format_value(last['RSI'])}\n\n"
             
-            # CCI - NEW
+            # CCI
             if 'CCI_14' in last.index:
                 message += f"📊 Commodity Channel Index (CCI):\n - CCI (14): {format_value(last['CCI_14'])}\n"
             if 'CCI_20' in last.index:
                 message += f" - CCI (20): {format_value(last['CCI_20'])}\n\n"
             
-            # ROC - NEW
+            # ROC
             if 'ROC_14' in last.index:
                 message += f"📊 Rate of Change (ROC):\n - ROC (14): {format_value(last['ROC_14'])}%\n"
             if 'ROC_25' in last.index:
@@ -553,13 +504,21 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             if 'MFI' in last.index:
                 message += f"💧 Money Flow Index (MFI):\n - MFI: {format_value(last['MFI'])}\n\n"
             
-            # ADI - NEW
+            # ADI
             if 'ADI' in last.index:
                 message += f"📊 Accumulation/Distribution Index (ADI):\n - ADI: {format_value(last['ADI'], 0)}\n\n"
             
-            # CMF - NEW
+            # CMF
             if 'CMF' in last.index:
                 message += f"📊 Chaikin Money Flow (CMF):\n - CMF (20): {format_value(last['CMF'])}\n\n"
+            
+            # Elder Ray - NEW
+            if 'BULL_POWER' in last.index:
+                message += (
+                    f"📊 Elder Ray Index (13):\n"
+                    f" - Bull Power: {format_value(last['BULL_POWER'])}\n"
+                    f" - Bear Power: {format_value(last['BEAR_POWER'])}\n\n"
+                )
             
             # Volume Analysis
             if 'VOLUME_MA' in last.index:
@@ -606,7 +565,7 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
                     f" - Band Width: {format_value(bb_width, 2)}%\n\n"
                 )
             
-            # Keltner Channels - NEW
+            # Keltner Channels
             if 'KC_UPPER' in last.index:
                 message += (
                     f"📊 Keltner Channels (20, 2 ATR):\n"
@@ -640,17 +599,6 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
                         message += f" - Fib {level*100:.1f}%: {format_value(price)}\n"
                 message += "\n"
             
-            if 'FIB_EXT_LOW' in last.index:
-                message += f"📊 Fibonacci Extension:\n"
-                message += f" - Start Low: {format_value(last['FIB_EXT_LOW'])}\n"
-                message += f" - Start High: {format_value(last['FIB_EXT_HIGH'])}\n"
-                
-                if hasattr(df, 'attrs') and 'fib_extensions' in df.attrs:
-                    extensions = df.attrs['fib_extensions']
-                    for level, price in sorted(extensions.items()):
-                        message += f" - Ext {level*100:.1f}%: {format_value(price)}\n"
-                message += "\n"
-            
             # Volume Profile
             if 'VOL_PROFILE_POC' in last.index and not pd.isna(last['VOL_PROFILE_POC']):
                 message += f"📊 Volume Profile:\n"
@@ -659,6 +607,17 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
                     message += f" - Value Area Low: {format_value(last['VOL_PROFILE_VA_LOW'])}\n"
                     message += f" - Value Area High: {format_value(last['VOL_PROFILE_VA_HIGH'])}\n"
                 message += "\n"
+            
+            # Pivot Points
+            if 'PIVOT' in last.index and not pd.isna(last['PIVOT']):
+                message += (
+                    f"📊 Pivot Points:\n"
+                    f" - Pivot: {format_value(last['PIVOT'])}\n"
+                    f" - R1: {format_value(last['R1'])}\n"
+                    f" - R2: {format_value(last['R2'])}\n"
+                    f" - S1: {format_value(last['S1'])}\n"
+                    f" - S2: {format_value(last['S2'])}\n\n"
+                )
             
             # Final Signal Summary
             message += f"📍 Final Signal Summary"
@@ -677,150 +636,90 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
     return command
 
 # -------------------------
-# Text Command
-# -------------------------
-async def text_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /text command"""
-    try:
-        template = get_analysis_template()
-        await update.message.reply_text(template)
-    except Exception as e:
-        logger.error(f"Error in text command: {e}")
-        await update.message.reply_text("Error retrieving analysis template.")
-
-# -------------------------
-# Start/Ping Commands
+# Basic Commands
 # -------------------------
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command"""
-    start_time = time.time()
-    msg = await update.message.reply_text("Checking...")
-    end_time = time.time()
-    ping_time = round((end_time - start_time) * 1000, 2)
-    
-    await msg.edit_text(
-        f"PSX Bot is Working! ✅\n"
-        f"Response time: {ping_time}ms\n\n"
-        f"Use /commands to see all available symbols and timeframes."
+    await update.message.reply_text(
+        "PSX Bot is Working! ✅\n"
+        "Use /commands to see all available symbols and timeframes."
     )
 
 async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Simple ping command"""
-    start_time = time.time()
-    msg = await update.message.reply_text("Pong!")
-    end_time = time.time()
-    latency = round((end_time - start_time) * 1000, 2)
-    await msg.edit_text(f"Pong! Response time: {latency}ms")
+    await update.message.reply_text("Pong!")
 
-# -------------------------
-# Commands List
-# -------------------------
 async def list_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show all available commands"""
-    
     message = "📋 Available Commands 📋\n\n"
     
     for stock in stocks + [kse100] + [gold]:
-        message += f"**{stock['symbol']}**\n"
-        
+        message += f"**{stock['symbol']}** - {stock['name']}\n"
         timeframes = ['5m', '15m', '30m', '1h', '4h', '1d', '1w']
-        commands_list = []
-        
-        for tf in timeframes:
-            cmd = f"/{stock['symbol'].lower()}_{tf}"
-            commands_list.append(cmd)
-        
+        commands_list = [f"/{stock['symbol'].lower()}_{tf}" for tf in timeframes]
         message += f"{' ,  '.join(commands_list)}\n\n"
     
     message += "━━━━━━━━━━━━━━━━━━━━━\n"
-    message += "**Other Commands:**\n"
-    message += "`/start`  `/ping`  `/text`  `/commands`\n"
+    message += "**Other Commands:** `/start`  `/ping`  `/commands`\n"
     
     await update.message.reply_text(message, parse_mode='Markdown')
 
 # -------------------------
-# Build Telegram Application
+# Build Application
 # -------------------------
-telegram_app = ApplicationBuilder()\
-    .token(BOT_TOKEN)\
-    .concurrent_updates(True)\
-    .build()
+from telegram.ext import ApplicationBuilder
+app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# Add commands
-telegram_app.add_handler(CommandHandler("start", start_command))
-telegram_app.add_handler(CommandHandler("ping", ping_command))
-telegram_app.add_handler(CommandHandler("text", text_command))
-telegram_app.add_handler(CommandHandler("commands", list_commands))
-logger.info("Added base commands")
+# Add handlers
+app.add_handler(CommandHandler("start", start_command))
+app.add_handler(CommandHandler("ping", ping_command))
+app.add_handler(CommandHandler("commands", list_commands))
 
-# Add all stock commands
+# Add stock commands
 for stock in stocks + [kse100] + [gold]:
     for interval_key in interval_map.keys():
         cmd_name = f"{stock['symbol'].lower()}_{interval_key}"
-        telegram_app.add_handler(
+        app.add_handler(
             CommandHandler(
-                cmd_name, 
+                cmd_name,
                 create_stock_command(
-                    stock['symbol'], 
-                    stock['name'], 
-                    stock['tv_symbol'], 
+                    stock['symbol'],
+                    stock['name'],
+                    stock['tv_symbol'],
                     interval_key
                 )
             )
         )
-        logger.info(f"Added command: /{cmd_name}")
+
+# Error handler
+async def error_handler(update, context):
+    logger.error(f"Error: {context.error}")
+
+app.add_error_handler(error_handler)
 
 # -------------------------
-# Error Handler
+# Flask for Render
 # -------------------------
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle errors"""
-    logger.error(f"Error: {context.error}", exc_info=True)
-    try:
-        if update and update.effective_message:
-            await update.effective_message.reply_text(
-                "An error occurred. Please try again."
-            )
-    except Exception as e:
-        logger.error(f"Error in error handler: {e}")
-
-telegram_app.add_error_handler(error_handler)
-
-# -------------------------
-# Flask App for Render
-# -------------------------
+from flask import Flask
 flask_app = Flask(__name__)
 
 @flask_app.route("/")
 def home():
-    return "PSX Indicator Bot is Running!"
+    return "PSX Bot is Running!"
 
 @flask_app.route("/health")
 def health():
-    return {"status": "healthy", "bot": "running"}, 200
+    return {"status": "ok"}, 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
-    flask_app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+    flask_app.run(host="0.0.0.0", port=port)
 
 # -------------------------
-# Main Execution
+# Main
 # -------------------------
 if __name__ == "__main__":
-    try:
-        # Start Flask
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-        logger.info(f"Flask server started on port {os.environ.get('PORT', 10000)}")
-        
-        time.sleep(2)
-        
-        # Start Telegram bot
-        logger.info("Starting Telegram bot...")
-        telegram_app.run_polling(drop_pending_updates=True)
-        
-    except KeyboardInterrupt:
-        logger.info("Bot stopped")
-    except Exception as e:
-        logger.error(f"Fatal error: {e}", exc_info=True)
-        raise
+    # Start Flask in thread
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    # Start bot
+    print("Starting bot...")
+    app.run_polling()

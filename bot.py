@@ -711,7 +711,7 @@ telegram_app.add_handler(CommandHandler("text", text_command))
 logger.info("Added commands: /start, /ping, /text")
 
 # Add all stock commands for all timeframes
-for stock in stocks + [gold]:
+for stock in stocks + [kse100] + [gold]:
     for interval_key in interval_map.keys():
         cmd_name = f"{stock['symbol'].lower()}_{interval_key}"
         telegram_app.add_handler(

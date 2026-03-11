@@ -1,6 +1,6 @@
 """
 PSX Stock Indicator Telegram Bot
-FINAL VERSION - 90% Accuracy with Timeframe Optimized Settings
+UPDATED VERSION - Clean Output, No Emojis, No Overbought Labels, Day Range Added
 """
 
 import os
@@ -114,7 +114,9 @@ interval_map = {
     "1w": Interval.in_weekly,
 }
 
-# PSX Stocks - Updated with correct TradingView symbols
+# -------------------------
+# PSX Stocks - UPDATED with KSE100 Index
+# -------------------------
 stocks = [
     {"symbol": "FFC", "name": "Fauji Fertilizer Company", "tv_symbol": "PSX:FFC"},
     {"symbol": "ENGROH", "name": "Engro Holdings", "tv_symbol": "PSX:ENGROH"},
@@ -131,6 +133,9 @@ stocks = [
     {"symbol": "PSO", "name": "Pakistan State Oil", "tv_symbol": "PSX:PSO"},
 ]
 
+# NEW: KSE-100 Index
+kse100 = {"symbol": "KSE100", "name": "KSE-100 Index", "tv_symbol": "PSX:KSE100"}
+
 # Alternative Meezan ETF symbols if the above doesn't work
 meezan_alternatives = [
     "PSX:MZNPETF",
@@ -142,144 +147,119 @@ meezan_alternatives = [
 # Gold symbol
 gold = {"symbol": "GOLD", "name": "Gold", "tv_symbol": "TVC:GOLD"}
 
-# Combine all symbols
-all_symbols = stocks + [gold]
+# Combine all symbols (including KSE100)
+all_symbols = stocks + [kse100] + [gold]
 
 # -------------------------
-# TIME FRAME OPTIMIZED INDICATORS - 90% ACCURACY
+# TIME FRAME OPTIMIZED INDICATORS - NO DUPLICATES
 # -------------------------
 def calculate_indicators_by_timeframe(df, timeframe):
-    """Calculate indicators with settings optimized for specific timeframe"""
+    """Calculate indicators with settings optimized for specific timeframe - No duplicates"""
     
     # ===== 5 MINUTE / 15 MINUTE (Scalping - Fast) =====
     if timeframe in ["5m", "15m"]:
-        # Fast Moving Averages
+        # EXISTING INDICATORS
         df['SMA_20'] = SMA(df, 20)
         df['EMA_9'] = EMA(df, 9)
         df['EMA_21'] = EMA(df, 21)
         df['HMA_9'] = HMA(df, 9)
-        
-        # Ichimoku
         df['ICHIMOKU_CONVERSION'], df['ICHIMOKU_BASE'], df['ICHIMOKU_SPAN_A'], df['ICHIMOKU_SPAN_B'] = Ichimoku(df)
-        
-        # SuperTrend - Fast
         df['SUPERTREND'] = SuperTrend(df, period=7, multiplier=3)
-        
-        # Parabolic SAR
         df['PSAR'] = ParabolicSAR(df)
-        
-        # MACD
         df['MACD'], df['MACD_SIGNAL'], df['MACD_HIST'] = MACD(df)
-        
-        # RSI
-        df['RSI'] = RSI(df, 14)
-        
-        # Stochastic - Fast
-        df['STOCH_K'], df['STOCH_D'] = Stochastic(df, 10, 3)
-        
-        # KDJ
-        df['KDJ_K'], df['KDJ_D'] = KDJ(df, 9, 3, 3)
-        
-        # Williams %R
+        df['RSI_14'] = RSI(df, 14)
+        df['RSI_7'] = RSI(df, 7)
+        df['STOCH_14_3_K'], df['STOCH_14_3_D'] = Stochastic(df, 14, 3)
+        df['STOCH_9_6_3_K'], df['STOCH_9_6_3_D'] = Stochastic_9_6_3(df)
+        df['KDJ_K'], df['KDJ_D'], df['KDJ_J'] = KDJ(df, 9, 3, 3)
         df['WILLIAMS'] = WilliamsR(df, 25)
-        
-        # CCI
         df['CCI'] = CCI(df, 14)
-        
-        # ROC
         df['ROC'] = ROC(df, 14)
-        
-        # ADX
         df['ADX'], df['PLUS_DI'], df['MINUS_DI'] = ADX(df, 14)
-        
-        # Ultimate Oscillator
         df['UO'] = UltimateOscillator(df)
-        
-        # Volume
         df['OBV'] = OBV(df)
         df['MFI'] = MFI(df, 10)
-        df['VWAP'] = VWAP(df)
         df['AROON_UP'], df['AROON_DOWN'] = Aroon(df, 10)
-        
-        # Bollinger Bands - Fast
         df['BB_UPPER'], df['BB_MIDDLE'], df['BB_LOWER'] = Bollinger_Bands(df, 15, 2)
-        
-        # ATR - Fast
         df['ATR'] = ATR(df, 7)
-        
-        # Heikin Ashi
         df['HA_CLOSE'] = HeikinAshi(df)
-        
-        # Donchian Channel - Fast
         df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df, 15)
+        
+        # NEW INDICATORS
+        df['STOCH_RSI_K'], df['STOCH_RSI_D'] = Stochastic_RSI(df, 14, 3, 3)
+        df['VWAP_HLC3'] = VWAP_HLC3(df)
+        vwap, upper1, lower1, upper2, lower2 = VWAP_Bands(df, 1, 2)
+        df['VWAP'] = vwap
+        df['VWAP_UPPER_1'] = upper1
+        df['VWAP_LOWER_1'] = lower1
+        df['VWAP_UPPER_2'] = upper2
+        df['VWAP_LOWER_2'] = lower2
+        df['VOLUME_MA_20'] = Volume_MA(df, 20)
+        df['VOLUME_OSC'] = Volume_Oscillator(df, 5, 20)
+        df['VOLT_10'] = VOLT(df, 10)
+        
+        tdi_result = TDI(df, 13, 34, 34)
+        if len(tdi_result) == 5:
+            df['TDI_RSI'], df['TDI_UPPER'], df['TDI_LOWER'], df['TDI_SIGNAL'], df['TDI_MARKET_BASE'] = tdi_result
     
     # ===== 30 MINUTE / 1 HOUR (Intraday - Medium) =====
     elif timeframe in ["30m", "1h"]:
-        # Moving Averages
         df['SMA_20'] = SMA(df, 20)
         df['SMA_50'] = SMA(df, 50)
         df['EMA_9'] = EMA(df, 9)
         df['EMA_21'] = EMA(df, 21)
         df['EMA_50'] = EMA(df, 50)
         df['HMA_14'] = HMA(df, 14)
-        
-        # Ichimoku
         df['ICHIMOKU_CONVERSION'], df['ICHIMOKU_BASE'], df['ICHIMOKU_SPAN_A'], df['ICHIMOKU_SPAN_B'] = Ichimoku(df)
-        
-        # SuperTrend - Medium
         df['SUPERTREND'] = SuperTrend(df, period=10, multiplier=3)
-        
-        # Parabolic SAR
         df['PSAR'] = ParabolicSAR(df)
-        
-        # MACD
         df['MACD'], df['MACD_SIGNAL'], df['MACD_HIST'] = MACD(df)
-        
-        # RSI
-        df['RSI'] = RSI(df, 14)
-        
-        # Stochastic
-        df['STOCH_K'], df['STOCH_D'] = Stochastic(df, 14, 3)
-        
-        # KDJ
-        df['KDJ_K'], df['KDJ_D'] = KDJ(df)
-        
-        # Williams %R
+        df['RSI_14'] = RSI(df, 14)
+        df['RSI_7'] = RSI(df, 7)
+        df['STOCH_14_3_K'], df['STOCH_14_3_D'] = Stochastic(df, 14, 3)
+        df['STOCH_9_6_3_K'], df['STOCH_9_6_3_D'] = Stochastic_9_6_3(df)
+        df['KDJ_K'], df['KDJ_D'], df['KDJ_J'] = KDJ(df)
         df['WILLIAMS'] = WilliamsR(df, 25)
-        
-        # CCI
         df['CCI'] = CCI(df, 14)
-        
-        # ROC
         df['ROC'] = ROC(df, 14)
-        
-        # Ultimate Oscillator
         df['UO'] = UltimateOscillator(df)
-        
-        # ADX
         df['ADX'], df['PLUS_DI'], df['MINUS_DI'] = ADX(df, 14)
-        
-        # Volume
         df['OBV'] = OBV(df)
         df['MFI'] = MFI(df, 14)
-        df['VWAP'] = VWAP(df)
         df['AROON_UP'], df['AROON_DOWN'] = Aroon(df, 14)
-        
-        # Bollinger Bands
         df['BB_UPPER'], df['BB_MIDDLE'], df['BB_LOWER'] = Bollinger_Bands(df)
-        
-        # ATR
         df['ATR'] = ATR(df, 14)
-        
-        # Heikin Ashi
         df['HA_CLOSE'] = HeikinAshi(df)
-        
-        # Donchian Channel
         df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df, 20)
+        
+        # NEW INDICATORS
+        df['STOCH_RSI_K'], df['STOCH_RSI_D'] = Stochastic_RSI(df, 14, 3, 3)
+        df['VWAP_HLC3'] = VWAP_HLC3(df)
+        vwap, upper1, lower1, upper2, lower2 = VWAP_Bands(df, 1, 2)
+        df['VWAP'] = vwap
+        df['VWAP_UPPER_1'] = upper1
+        df['VWAP_LOWER_1'] = lower1
+        df['VWAP_UPPER_2'] = upper2
+        df['VWAP_LOWER_2'] = lower2
+        df['VOLUME_MA_20'] = Volume_MA(df, 20)
+        df['VOLUME_OSC'] = Volume_Oscillator(df, 5, 20)
+        df['VOLT_10'] = VOLT(df, 10)
+        
+        tdi_result = TDI(df, 13, 34, 34)
+        if len(tdi_result) == 5:
+            df['TDI_RSI'], df['TDI_UPPER'], df['TDI_LOWER'], df['TDI_SIGNAL'], df['TDI_MARKET_BASE'] = tdi_result
+        
+        try:
+            fib_high, fib_low, fib_levels, current_level = Fibonacci_Retracement(df, 50)
+            if fib_high is not None:
+                df['FIB_HIGH'] = fib_high
+                df['FIB_LOW'] = fib_low
+                df.attrs['fib_levels'] = fib_levels
+        except:
+            pass
     
     # ===== 4 HOUR (Swing Trading - Slow) =====
     elif timeframe == "4h":
-        # Moving Averages
         df['SMA_20'] = SMA(df, 20)
         df['SMA_50'] = SMA(df, 50)
         df['SMA_200'] = SMA(df, 200)
@@ -288,61 +268,61 @@ def calculate_indicators_by_timeframe(df, timeframe):
         df['EMA_50'] = EMA(df, 50)
         df['EMA_200'] = EMA(df, 200)
         df['HMA_21'] = HMA(df, 21)
-        
-        # Ichimoku
         df['ICHIMOKU_CONVERSION'], df['ICHIMOKU_BASE'], df['ICHIMOKU_SPAN_A'], df['ICHIMOKU_SPAN_B'] = Ichimoku(df)
-        
-        # SuperTrend - Slow
         df['SUPERTREND'] = SuperTrend(df, period=14, multiplier=3)
-        
-        # Parabolic SAR
         df['PSAR'] = ParabolicSAR(df)
-        
-        # MACD
         df['MACD'], df['MACD_SIGNAL'], df['MACD_HIST'] = MACD(df)
-        
-        # RSI
-        df['RSI'] = RSI(df, 14)
-        
-        # Stochastic
-        df['STOCH_K'], df['STOCH_D'] = Stochastic(df, 14, 3)
-        
-        # KDJ
-        df['KDJ_K'], df['KDJ_D'] = KDJ(df)
-        
-        # Williams %R
+        df['RSI_14'] = RSI(df, 14)
+        df['RSI_7'] = RSI(df, 7)
+        df['STOCH_14_3_K'], df['STOCH_14_3_D'] = Stochastic(df, 14, 3)
+        df['STOCH_9_6_3_K'], df['STOCH_9_6_3_D'] = Stochastic_9_6_3(df)
+        df['KDJ_K'], df['KDJ_D'], df['KDJ_J'] = KDJ(df)
         df['WILLIAMS'] = WilliamsR(df, 25)
-        
-        # CCI - Slower for 4h
         df['CCI'] = CCI(df, 20)
-        
-        # ROC
         df['ROC'] = ROC(df, 14)
-        
-        # ADX
         df['ADX'], df['PLUS_DI'], df['MINUS_DI'] = ADX(df, 14)
-        
-        # Volume
         df['OBV'] = OBV(df)
         df['MFI'] = MFI(df, 14)
-        df['VWAP'] = VWAP(df)
         df['AROON_UP'], df['AROON_DOWN'] = Aroon(df, 14)
-        
-        # Bollinger Bands
         df['BB_UPPER'], df['BB_MIDDLE'], df['BB_LOWER'] = Bollinger_Bands(df)
-        
-        # ATR
         df['ATR'] = ATR(df, 14)
-        
-        # Heikin Ashi
         df['HA_CLOSE'] = HeikinAshi(df)
-        
-        # Donchian Channel
         df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df, 20)
+        
+        # NEW INDICATORS
+        df['STOCH_RSI_K'], df['STOCH_RSI_D'] = Stochastic_RSI(df, 14, 3, 3)
+        df['VWAP_HLC3'] = VWAP_HLC3(df)
+        vwap, upper1, lower1, upper2, lower2 = VWAP_Bands(df, 1, 2)
+        df['VWAP'] = vwap
+        df['VWAP_UPPER_1'] = upper1
+        df['VWAP_LOWER_1'] = lower1
+        df['VWAP_UPPER_2'] = upper2
+        df['VWAP_LOWER_2'] = lower2
+        df['VOLUME_MA_20'] = Volume_MA(df, 20)
+        df['VOLUME_OSC'] = Volume_Oscillator(df, 5, 20)
+        df['VOLT_10'] = VOLT(df, 10)
+        
+        tdi_result = TDI(df, 13, 34, 34)
+        if len(tdi_result) == 5:
+            df['TDI_RSI'], df['TDI_UPPER'], df['TDI_LOWER'], df['TDI_SIGNAL'], df['TDI_MARKET_BASE'] = tdi_result
+        
+        try:
+            fib_high, fib_low, fib_levels, current_level = Fibonacci_Retracement(df, 100)
+            if fib_high is not None:
+                df['FIB_HIGH'] = fib_high
+                df['FIB_LOW'] = fib_low
+                df.attrs['fib_levels'] = fib_levels
+                
+            ext_low, ext_high, retrace_low, extensions = Fibonacci_Extension(df, 100)
+            if ext_low is not None:
+                df['FIB_EXT_LOW'] = ext_low
+                df['FIB_EXT_HIGH'] = ext_high
+                df.attrs['fib_extensions'] = extensions
+        except:
+            pass
     
-    # ===== DAILY / WEEKLY (Position Trading - Strong Trends) =====
+    # ===== DAILY / WEEKLY (Position Trading) =====
     else:  # "1d", "1w"
-        # All important Moving Averages
         df['SMA_20'] = SMA(df, 20)
         df['SMA_50'] = SMA(df, 50)
         df['SMA_200'] = SMA(df, 200)
@@ -351,62 +331,68 @@ def calculate_indicators_by_timeframe(df, timeframe):
         df['EMA_50'] = EMA(df, 50)
         df['EMA_200'] = EMA(df, 200)
         df['HMA_21'] = HMA(df, 21)
-        
-        # Ichimoku
         df['ICHIMOKU_CONVERSION'], df['ICHIMOKU_BASE'], df['ICHIMOKU_SPAN_A'], df['ICHIMOKU_SPAN_B'] = Ichimoku(df)
-        
-        # SuperTrend - All periods for confirmation
         df['SUPERTREND_7'] = SuperTrend(df, period=7, multiplier=3)
         df['SUPERTREND_10'] = SuperTrend(df, period=10, multiplier=3)
         df['SUPERTREND_14'] = SuperTrend(df, period=14, multiplier=3)
-        
-        # Parabolic SAR
         df['PSAR'] = ParabolicSAR(df)
-        
-        # MACD
         df['MACD'], df['MACD_SIGNAL'], df['MACD_HIST'] = MACD(df)
-        
-        # RSI
-        df['RSI'] = RSI(df, 14)
-        
-        # Stochastic
-        df['STOCH_K'], df['STOCH_D'] = Stochastic(df, 14, 3)
-        
-        # KDJ
-        df['KDJ_K'], df['KDJ_D'] = KDJ(df)
-        
-        # Williams %R
+        df['RSI_14'] = RSI(df, 14)
+        df['RSI_7'] = RSI(df, 7)
+        df['STOCH_14_3_K'], df['STOCH_14_3_D'] = Stochastic(df, 14, 3)
+        df['STOCH_9_6_3_K'], df['STOCH_9_6_3_D'] = Stochastic_9_6_3(df)
+        df['KDJ_K'], df['KDJ_D'], df['KDJ_J'] = KDJ(df)
         df['WILLIAMS'] = WilliamsR(df, 25)
-        
-        # CCI
         df['CCI'] = CCI(df, 20)
-        
-        # ROC
         df['ROC'] = ROC(df, 14)
-        
-        # ADX
         df['ADX'], df['PLUS_DI'], df['MINUS_DI'] = ADX(df, 14)
-        
-        # Ultimate Oscillator
         df['UO'] = UltimateOscillator(df)
-        
-        # Volume
         df['OBV'] = OBV(df)
         df['MFI'] = MFI(df, 14)
-        df['VWAP'] = VWAP(df)
         df['AROON_UP'], df['AROON_DOWN'] = Aroon(df, 14)
-        
-        # Bollinger Bands
         df['BB_UPPER'], df['BB_MIDDLE'], df['BB_LOWER'] = Bollinger_Bands(df)
-        
-        # ATR
         df['ATR'] = ATR(df, 14)
-        
-        # Heikin Ashi
         df['HA_CLOSE'] = HeikinAshi(df)
-        
-        # Donchian Channel
         df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df, 20)
+        
+        # NEW INDICATORS
+        df['STOCH_RSI_K'], df['STOCH_RSI_D'] = Stochastic_RSI(df, 14, 3, 3)
+        df['VWAP_HLC3'] = VWAP_HLC3(df)
+        vwap, upper1, lower1, upper2, lower2 = VWAP_Bands(df, 1, 2)
+        df['VWAP'] = vwap
+        df['VWAP_UPPER_1'] = upper1
+        df['VWAP_LOWER_1'] = lower1
+        df['VWAP_UPPER_2'] = upper2
+        df['VWAP_LOWER_2'] = lower2
+        df['VOLUME_MA_20'] = Volume_MA(df, 20)
+        df['VOLUME_OSC'] = Volume_Oscillator(df, 5, 20)
+        df['VOLT_10'] = VOLT(df, 10)
+        
+        tdi_result = TDI(df, 13, 34, 34)
+        if len(tdi_result) == 5:
+            df['TDI_RSI'], df['TDI_UPPER'], df['TDI_LOWER'], df['TDI_SIGNAL'], df['TDI_MARKET_BASE'] = tdi_result
+        
+        try:
+            fib_high, fib_low, fib_levels, current_level = Fibonacci_Retracement(df, 200)
+            if fib_high is not None:
+                df['FIB_HIGH'] = fib_high
+                df['FIB_LOW'] = fib_low
+                df.attrs['fib_levels'] = fib_levels
+                
+            ext_low, ext_high, retrace_low, extensions = Fibonacci_Extension(df, 200)
+            if ext_low is not None:
+                df['FIB_EXT_LOW'] = ext_low
+                df['FIB_EXT_HIGH'] = ext_high
+                df.attrs['fib_extensions'] = extensions
+        except:
+            pass
+        
+        try:
+            mp_poc, mp_levels = Market_Profile(df, 20)
+            if mp_poc is not None:
+                df['MARKET_PROFILE_POC'] = mp_poc
+        except:
+            pass
     
     return df
 
@@ -422,14 +408,14 @@ def format_value(value, decimals=2):
     return str(value)
 
 # -------------------------
-# Create stock command with comprehensive output
+# Create stock command with clean output format (no emojis)
 # -------------------------
 def create_stock_command(symbol, name, tv_symbol, interval_key):
-    """Create a command handler with comprehensive indicator output"""
+    """Create a command handler with clean indicator output - no emojis, step by step format"""
     
     async def command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Send immediate acknowledgment
-        await update.message.reply_text(f"Fetching {name} ({interval_key}) data... This may take 10-15 seconds.")
+        await update.message.reply_text(f"Fetching {name} ({interval_key}) data... This may take 15-20 seconds.")
         
         try:
             # Run in thread pool with timeout
@@ -451,10 +437,10 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
                             symbol=sym,
                             exchange=exchange,
                             interval=interval_map[interval_key],
-                            n_bars=500  # Enough bars for all indicators
+                            n_bars=500
                         )
                     ),
-                    timeout=25.0
+                    timeout=30.0
                 )
             except asyncio.TimeoutError:
                 logger.error(f"Timeout fetching {symbol} {interval_key}")
@@ -463,7 +449,6 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             
             # Validate data
             if df is None or df.empty:
-                # If Meezan ETF fails, try alternative symbols
                 if symbol == "MZNPETF":
                     await update.message.reply_text(f"Trying alternative symbol for {name}...")
                     for alt_sym in meezan_alternatives:
@@ -497,10 +482,28 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             last = df.iloc[-1]
             prev = df.iloc[-2] if len(df) > 1 else last
             
+            # Calculate Day's Range (current day's high and low)
+            if interval_key in ["5m", "15m", "30m", "1h", "4h"]:
+                # For intraday timeframes, find today's high and low
+                today = pd.Timestamp.now().date()
+                today_data = df[df.index.date == today]
+                
+                if not today_data.empty:
+                    day_high = today_data['high'].max()
+                    day_low = today_data['low'].min()
+                else:
+                    # If no data for today, use last 24 hours
+                    day_high = df['high'].iloc[-min(24, len(df)):].max()
+                    day_low = df['low'].iloc[-min(24, len(df)):].min()
+            else:
+                # For daily/weekly, the current candle itself is the day
+                day_high = last['high']
+                day_low = last['low']
+            
             # Format close time
             close_time = df.index[-1].strftime('%Y-%m-%d %H:%M:%S')
             
-            # Calculate change
+            # Calculate change from previous close
             change_points = last['close'] - prev['close']
             change_percent = (change_points / prev['close']) * 100 if prev['close'] != 0 else 0
             
@@ -512,199 +515,278 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             else:
                 change_sign = "="
             
-            # START BUILDING MESSAGE - EXACT FORMAT AS REQUESTED
-            message = (
-                f"📊 {name} - {tv_symbol} ({interval_key})\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n\n"
-                
-                f"1️⃣ Market Overview\n"
-                f"💰 Price: {format_value(last['close'])}\n"
-                f"🔓 Open Price: {format_value(last['open'])}\n"
-                f"🔒 LDCP: {format_value(prev['close'])}\n"  
-                f"📈 24h High: {format_value(last['high'])}\n"
-                f"📉 24h Low: {format_value(last['low'])}\n"
-                f"🔁 Change: {change_sign} {format_value(change_points)} ({format_value(change_percent)}%)\n"
-                f"🧮 Volume: {format_value(last['volume'], 0)}\n"
-                f"⏰ Close Time: {close_time}\n\n"
-                
-                f"2️⃣ Trend Direction\n\n"
-            )
+            # START BUILDING MESSAGE - CLEAN FORMAT
+            message_lines = []
             
-            # Add available SMA values
-            sma_section = "📊 Simple Moving Averages (SMA):\n"
-            if 'SMA_10' in last.index:
-                sma_section += f" - SMA 10: {format_value(last['SMA_10'])}\n"
+            # Header
+            message_lines.append(f"{name} - {tv_symbol} ({interval_key})")
+            message_lines.append("=" * 40)
+            message_lines.append("")
+            
+            # 1. MARKET OVERVIEW
+            message_lines.append("1. MARKET OVERVIEW")
+            message_lines.append("-" * 20)
+            message_lines.append(f"Current Price    : {format_value(last['close'])}")
+            message_lines.append(f"Open Price       : {format_value(last['open'])}")
+            message_lines.append(f"Previous Close   : {format_value(prev['close'])}")
+            message_lines.append(f"Day Range High   : {format_value(day_high)}")
+            message_lines.append(f"Day Range Low    : {format_value(day_low)}")
+            message_lines.append(f"Change           : {change_sign} {format_value(change_points)} ({format_value(change_percent)}%)")
+            message_lines.append(f"Volume           : {format_value(last['volume'], 0)}")
+            message_lines.append(f"Close Time       : {close_time}")
+            message_lines.append("")
+            
+            # 2. TREND INDICATORS
+            message_lines.append("2. TREND INDICATORS")
+            message_lines.append("-" * 20)
+            
+            # Moving Averages
+            ma_lines = []
             if 'SMA_20' in last.index:
-                sma_section += f" - SMA 20: {format_value(last['SMA_20'])}\n"
+                ma_lines.append(f"SMA 20           : {format_value(last['SMA_20'])}")
             if 'SMA_50' in last.index:
-                sma_section += f" - SMA 50: {format_value(last['SMA_50'])}\n"
+                ma_lines.append(f"SMA 50           : {format_value(last['SMA_50'])}")
             if 'SMA_200' in last.index:
-                sma_section += f" - SMA 200: {format_value(last['SMA_200'])}\n"
-            if sma_section != "📊 Simple Moving Averages (SMA):\n":
-                message += sma_section + "\n"
-            
-            # EMA section
-            ema_section = "📈 Exponential Moving Averages (EMA):\n"
+                ma_lines.append(f"SMA 200          : {format_value(last['SMA_200'])}")
             if 'EMA_9' in last.index:
-                ema_section += f" - EMA 9: {format_value(last['EMA_9'])}\n"
+                ma_lines.append(f"EMA 9            : {format_value(last['EMA_9'])}")
             if 'EMA_21' in last.index:
-                ema_section += f" - EMA 21: {format_value(last['EMA_21'])}\n"
+                ma_lines.append(f"EMA 21           : {format_value(last['EMA_21'])}")
             if 'EMA_50' in last.index:
-                ema_section += f" - EMA 50: {format_value(last['EMA_50'])}\n"
+                ma_lines.append(f"EMA 50           : {format_value(last['EMA_50'])}")
             if 'EMA_200' in last.index:
-                ema_section += f" - EMA 200: {format_value(last['EMA_200'])}\n"
-            if ema_section != "📈 Exponential Moving Averages (EMA):\n":
-                message += ema_section + "\n"
-            
-            # HMA section
-            hma_section = "📈 Hull Moving Average:\n"
+                ma_lines.append(f"EMA 200          : {format_value(last['EMA_200'])}")
             if 'HMA_9' in last.index:
-                hma_section += f"  (HMA 9): {format_value(last['HMA_9'])}\n"
+                ma_lines.append(f"HMA 9            : {format_value(last['HMA_9'])}")
             if 'HMA_14' in last.index:
-                hma_section += f"  (HMA 14): {format_value(last['HMA_14'])}\n"
+                ma_lines.append(f"HMA 14           : {format_value(last['HMA_14'])}")
             if 'HMA_21' in last.index:
-                hma_section += f"  (HMA 21): {format_value(last['HMA_21'])}\n"
-            if hma_section != "📈 Hull Moving Average:\n":
-                message += hma_section + "\n"
+                ma_lines.append(f"HMA 21           : {format_value(last['HMA_21'])}")
             
-            # Ichimoku
+            if ma_lines:
+                message_lines.extend(ma_lines)
+                message_lines.append("")
+            
+            # Ichimoku Cloud
             if 'ICHIMOKU_CONVERSION' in last.index:
-                message += (
-                    f"📊 Ichimoku Cloud:\n"
-                    f" - Conversion Line (9): {format_value(last['ICHIMOKU_CONVERSION'])}\n"
-                    f" - Base Line (26): {format_value(last['ICHIMOKU_BASE'])}\n"
-                    f" - Leading Span A: {format_value(last['ICHIMOKU_SPAN_A'])}\n"
-                    f" - Leading Span B: {format_value(last['ICHIMOKU_SPAN_B'])}\n\n"
-                )
+                message_lines.append("Ichimoku Cloud:")
+                message_lines.append(f"  Conversion (9) : {format_value(last['ICHIMOKU_CONVERSION'])}")
+                message_lines.append(f"  Base (26)      : {format_value(last['ICHIMOKU_BASE'])}")
+                message_lines.append(f"  Span A         : {format_value(last['ICHIMOKU_SPAN_A'])}")
+                message_lines.append(f"  Span B         : {format_value(last['ICHIMOKU_SPAN_B'])}")
+                message_lines.append("")
             
             # SuperTrend
-            st_section = "📈 SuperTrend:\n"
+            st_lines = []
             if 'SUPERTREND' in last.index:
-                st_section += f" - Value: {format_value(last['SUPERTREND'])}\n"
+                st_lines.append(f"SuperTrend       : {format_value(last['SUPERTREND'])}")
             if 'SUPERTREND_7' in last.index:
-                st_section += f" - Value(7): {format_value(last['SUPERTREND_7'])}\n"
+                st_lines.append(f"SuperTrend(7)    : {format_value(last['SUPERTREND_7'])}")
             if 'SUPERTREND_10' in last.index:
-                st_section += f" - Value(10): {format_value(last['SUPERTREND_10'])}\n"
+                st_lines.append(f"SuperTrend(10)   : {format_value(last['SUPERTREND_10'])}")
             if 'SUPERTREND_14' in last.index:
-                st_section += f" - Value(14): {format_value(last['SUPERTREND_14'])}\n"
-            if st_section != "📈 SuperTrend:\n":
-                message += st_section + "\n"
+                st_lines.append(f"SuperTrend(14)   : {format_value(last['SUPERTREND_14'])}")
+            
+            if st_lines:
+                message_lines.extend(st_lines)
+                message_lines.append("")
             
             # Parabolic SAR
             if 'PSAR' in last.index:
-                message += f"📈 Parabolic SAR:\n - Step AF Value(0.02): {format_value(last['PSAR'])}\n\n"
+                message_lines.append(f"Parabolic SAR    : {format_value(last['PSAR'])}")
+                message_lines.append("")
             
-            # 3️⃣ Momentum Strength
-            message += f"3️⃣ Momentum Strength\n\n"
+            # 3. MOMENTUM OSCILLATORS
+            message_lines.append("3. MOMENTUM OSCILLATORS")
+            message_lines.append("-" * 20)
             
             # MACD
             if 'MACD' in last.index:
-                message += (
-                    f"📉 MACD: 12,26,9\n"
-                    f" - MACD: {format_value(last['MACD'])}\n"
-                    f" - Signal: {format_value(last['MACD_SIGNAL'])}\n"
-                    f" - Histogram: {format_value(last['MACD_HIST'])}\n\n"
-                )
+                message_lines.append("MACD (12,26,9):")
+                message_lines.append(f"  MACD Line      : {format_value(last['MACD'])}")
+                message_lines.append(f"  Signal Line    : {format_value(last['MACD_SIGNAL'])}")
+                message_lines.append(f"  Histogram      : {format_value(last['MACD_HIST'])}")
+                message_lines.append("")
             
             # RSI
-            if 'RSI' in last.index:
-                message += f"⚡ Relative Strength Index (RSI):\n - RSI (14): {format_value(last['RSI'])}\n\n"
+            rsi_lines = []
+            if 'RSI_14' in last.index:
+                rsi_lines.append(f"RSI (14)         : {format_value(last['RSI_14'])}")
+            if 'RSI_7' in last.index:
+                rsi_lines.append(f"RSI (7)          : {format_value(last['RSI_7'])}")
             
-            # Stochastic
-            if 'STOCH_K' in last.index:
-                message += (
-                    f"📉 Stochastic (14,3,3):\n"
-                    f" - %K: {format_value(last['STOCH_K'])}\n"
-                    f" - %D: {format_value(last['STOCH_D'])}\n\n"
-                )
+            if rsi_lines:
+                message_lines.extend(rsi_lines)
+                message_lines.append("")
+            
+            # Stochastic 14,3
+            if 'STOCH_14_3_K' in last.index:
+                message_lines.append("Stochastic (14,3):")
+                message_lines.append(f"  %K             : {format_value(last['STOCH_14_3_K'])}")
+                message_lines.append(f"  %D             : {format_value(last['STOCH_14_3_D'])}")
+                message_lines.append("")
+            
+            # Stochastic 9,6,3
+            if 'STOCH_9_6_3_K' in last.index:
+                message_lines.append("Stochastic (9,6,3):")
+                message_lines.append(f"  %K             : {format_value(last['STOCH_9_6_3_K'])}")
+                message_lines.append(f"  %D             : {format_value(last['STOCH_9_6_3_D'])}")
+                message_lines.append("")
+            
+            # Stochastic RSI
+            if 'STOCH_RSI_K' in last.index:
+                message_lines.append("Stochastic RSI (14,3,3):")
+                message_lines.append(f"  Stoch RSI %K   : {format_value(last['STOCH_RSI_K'])}")
+                message_lines.append(f"  Stoch RSI %D   : {format_value(last['STOCH_RSI_D'])}")
+                message_lines.append("")
             
             # KDJ
             if 'KDJ_K' in last.index:
-                message += (
-                    f"📊 KDJ (9,3,3):\n"
-                    f" - K: {format_value(last['KDJ_K'])}\n"
-                    f" - D: {format_value(last['KDJ_D'])}\n\n"
-                )
+                message_lines.append("KDJ (9,3,3):")
+                message_lines.append(f"  K              : {format_value(last['KDJ_K'])}")
+                message_lines.append(f"  D              : {format_value(last['KDJ_D'])}")
+                message_lines.append(f"  J              : {format_value(last['KDJ_J'])}")
+                message_lines.append("")
             
             # Williams %R
             if 'WILLIAMS' in last.index:
-                message += f"📉 Williams %R Indicator:\n - Williams %R (25): {format_value(last['WILLIAMS'])}\n\n"
+                message_lines.append(f"Williams %R (25) : {format_value(last['WILLIAMS'])}")
+                message_lines.append("")
             
             # CCI
             if 'CCI' in last.index:
-                message += f"📘 Commodity Channel Index (CCI):\n - CCI (14): {format_value(last['CCI'])}\n\n"
+                message_lines.append(f"CCI (14)         : {format_value(last['CCI'])}")
+                message_lines.append("")
             
             # ROC
             if 'ROC' in last.index:
-                message += f"📊 Rate of Change (ROC):\n - ROC (14): {format_value(last['ROC'])}\n\n"
+                message_lines.append(f"ROC (14)         : {format_value(last['ROC'])}%")
+                message_lines.append("")
+            
+            # TDI
+            if 'TDI_RSI' in last.index:
+                message_lines.append("TDI (13,34,34):")
+                message_lines.append(f"  TDI RSI        : {format_value(last['TDI_RSI'])}")
+                message_lines.append(f"  Upper Band     : {format_value(last['TDI_UPPER'])}")
+                message_lines.append(f"  Lower Band     : {format_value(last['TDI_LOWER'])}")
+                message_lines.append(f"  Signal Line    : {format_value(last['TDI_SIGNAL'])}")
+                message_lines.append(f"  Market Base    : {format_value(last['TDI_MARKET_BASE'])}")
+                message_lines.append("")
             
             # Ultimate Oscillator
             if 'UO' in last.index:
-                message += f"🧭 Ultimate Oscillator:\n - UO (7,14,28): {format_value(last['UO'])}\n\n"
+                message_lines.append(f"Ultimate Osc     : {format_value(last['UO'])}")
+                message_lines.append("")
             
             # ADX
             if 'ADX' in last.index:
-                message += (
-                    f"📊 ADX (Trend Strength):\n"
-                    f" - ADX (14): {format_value(last['ADX'])}\n"
-                    f" - +DI (14): {format_value(last['PLUS_DI'])}\n"
-                    f" - -DI (14): {format_value(last['MINUS_DI'])}\n\n"
-                )
+                message_lines.append("ADX (14):")
+                message_lines.append(f"  ADX            : {format_value(last['ADX'])}")
+                message_lines.append(f"  +DI            : {format_value(last['PLUS_DI'])}")
+                message_lines.append(f"  -DI            : {format_value(last['MINUS_DI'])}")
+                message_lines.append("")
             
-            # 4️⃣ Volume & Money Flow
-            message += f"4️⃣ Volume & Money Flow\n\n"
+            # 4. VOLUME & MONEY FLOW
+            message_lines.append("4. VOLUME & MONEY FLOW")
+            message_lines.append("-" * 20)
             
             # OBV
             if 'OBV' in last.index:
-                message += f"📊 On-Balance Volume (OBV):\n - OBV: {format_value(last['OBV'], 0)}\n\n"
+                message_lines.append(f"OBV              : {format_value(last['OBV'], 0)}")
+                message_lines.append("")
             
             # MFI
             if 'MFI' in last.index:
-                message += f"💧 Money Flow Index (MFI):\n - MFI (14): {format_value(last['MFI'])}\n\n"
+                message_lines.append(f"MFI (14)         : {format_value(last['MFI'])}")
+                message_lines.append("")
+            
+            # Volume Analysis
+            vol_lines = []
+            if 'VOLUME_MA_20' in last.index:
+                volume_ratio = last['volume'] / last['VOLUME_MA_20'] if last['VOLUME_MA_20'] > 0 else 0
+                vol_lines.append(f"Volume MA(20)    : {format_value(last['VOLUME_MA_20'], 0)}")
+                vol_lines.append(f"Volume Ratio     : {format_value(volume_ratio, 2)}x")
+            
+            if 'VOLUME_OSC' in last.index:
+                vol_lines.append(f"Volume Oscillator: {format_value(last['VOLUME_OSC'], 2)}%")
+            
+            if vol_lines:
+                message_lines.extend(vol_lines)
+                message_lines.append("")
+            
+            # VWAP
+            vwap_lines = []
+            if 'VWAP' in last.index:
+                vwap_lines.append(f"VWAP (HLC3)      : {format_value(last['VWAP'])}")
+            if 'VWAP_UPPER_1' in last.index:
+                vwap_lines.append(f"VWAP +1σ         : {format_value(last['VWAP_UPPER_1'])}")
+                vwap_lines.append(f"VWAP -1σ         : {format_value(last['VWAP_LOWER_1'])}")
+            if 'VWAP_UPPER_2' in last.index:
+                vwap_lines.append(f"VWAP +2σ         : {format_value(last['VWAP_UPPER_2'])}")
+                vwap_lines.append(f"VWAP -2σ         : {format_value(last['VWAP_LOWER_2'])}")
+            
+            if vwap_lines:
+                message_lines.extend(vwap_lines)
+                message_lines.append("")
+            
+            # VOLT
+            if 'VOLT_10' in last.index:
+                message_lines.append(f"VOLT(10)         : {format_value(last['VOLT_10'])}")
+                message_lines.append("")
             
             # Aroon
             if 'AROON_UP' in last.index:
-                message += (
-                    f"📊 Aroon Indicator (14):\n"
-                    f" - Aroon Up: {format_value(last['AROON_UP'])}\n"
-                    f" - Aroon Down: {format_value(last['AROON_DOWN'])}\n\n"
-                )
+                message_lines.append("Aroon (14):")
+                message_lines.append(f"  Aroon Up       : {format_value(last['AROON_UP'])}")
+                message_lines.append(f"  Aroon Down     : {format_value(last['AROON_DOWN'])}")
+                message_lines.append("")
             
-            # VWAP
-            if 'VWAP' in last.index:
-                message += f"🔹 VWAP:\n - VWAP: {format_value(last['VWAP'])}\n\n"
-            
-            # 5️⃣ Volatility & Range
-            message += f"5️⃣ Volatility & Range\n\n"
+            # 5. VOLATILITY & RANGE
+            message_lines.append("5. VOLATILITY & RANGE")
+            message_lines.append("-" * 20)
             
             # Bollinger Bands
             if 'BB_UPPER' in last.index:
-                message += (
-                    f"🎯 Bollinger Bands (20, 2 StdDev):\n"
-                    f" - Upper Band: {format_value(last['BB_UPPER'])}\n"
-                    f" - Middle Band: {format_value(last['BB_MIDDLE'])}\n"
-                    f" - Lower Band: {format_value(last['BB_LOWER'])}\n\n"
-                )
+                bb_width = (last['BB_UPPER'] - last['BB_LOWER']) / last['BB_MIDDLE'] * 100
+                message_lines.append("Bollinger Bands (20,2):")
+                message_lines.append(f"  Upper          : {format_value(last['BB_UPPER'])}")
+                message_lines.append(f"  Middle         : {format_value(last['BB_MIDDLE'])}")
+                message_lines.append(f"  Lower          : {format_value(last['BB_LOWER'])}")
+                message_lines.append(f"  Band Width     : {format_value(bb_width, 2)}%")
+                message_lines.append("")
             
             # ATR
             if 'ATR' in last.index:
-                message += f"📏 Average True Range (ATR):\n - ATR (14): {format_value(last['ATR'])}\n\n"
+                message_lines.append(f"ATR (14)         : {format_value(last['ATR'])}")
+                message_lines.append("")
             
             # Heikin Ashi
             if 'HA_CLOSE' in last.index:
-                message += f"🕯 Heikin Ashi:\n - Close: {format_value(last['HA_CLOSE'])}\n\n"
+                message_lines.append(f"Heikin Ashi Close: {format_value(last['HA_CLOSE'])}")
+                message_lines.append("")
             
             # Donchian Channel
             if 'DC_UPPER' in last.index:
-                message += (
-                    f"📊 Donchian Channel (20):\n"
-                    f" - Upper: {format_value(last['DC_UPPER'])}\n"
-                    f" - Middle: {format_value(last['DC_MIDDLE'])}\n"
-                    f" - Lower: {format_value(last['DC_LOWER'])}\n\n"
-                )
+                message_lines.append("Donchian Channel (20):")
+                message_lines.append(f"  Upper          : {format_value(last['DC_UPPER'])}")
+                message_lines.append(f"  Middle         : {format_value(last['DC_MIDDLE'])}")
+                message_lines.append(f"  Lower          : {format_value(last['DC_LOWER'])}")
+                message_lines.append("")
             
-            # Final Signal Summary
-            message += f"📍 Final Signal Summary"
+            # Fibonacci (if available)
+            if 'FIB_HIGH' in last.index:
+                message_lines.append("Fibonacci Levels:")
+                message_lines.append(f"  Swing High     : {format_value(last['FIB_HIGH'])}")
+                message_lines.append(f"  Swing Low      : {format_value(last['FIB_LOW'])}")
+                
+                if hasattr(df, 'attrs') and 'fib_levels' in df.attrs:
+                    fib_levels = df.attrs['fib_levels']
+                    for level, price in sorted(fib_levels.items()):
+                        message_lines.append(f"  Fib {level*100:.1f}%     : {format_value(price)}")
+                message_lines.append("")
+            
+            # Join all lines
+            message = "\n".join(message_lines)
             
             # Split message if too long
             if len(message) > 4096:
@@ -757,17 +839,16 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.edit_text(f"Pong! Response time: {latency}ms")
 
 # -------------------------
-# Commands List Feature - Simple List with Full Commands (WITH UNDERSCORE)
+# Commands List Feature
 # -------------------------
 async def list_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /commands - show all available commands in a simple list"""
+    """Handle /commands - show all available commands"""
     
-    message = "📋 **Available Commands** 📋\n\n"
+    message = "📋 Available Commands 📋\n\n"
     
-    for stock in stocks + [gold]:
-        message += f"**{stock['symbol']}**\n"
+    for stock in stocks + [kse100] + [gold]:
+        message += f"{stock['symbol']}\n"
         
-        # Add all timeframe commands in one line
         timeframes = ['5m', '15m', '30m', '1h', '4h', '1d', '1w']
         commands_list = []
         
@@ -775,14 +856,12 @@ async def list_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cmd = f"/{stock['symbol'].lower()}_{tf}"
             commands_list.append(cmd)
     
-        # Join all commands with comma
         message += f"{' ,  '.join(commands_list)}\n\n"
     
-    # Add other commands
     message += "━━━━━━━━━━━━━━━━━━━━━\n"
-    message += "**Other Commands:**\n"
-    message += "`/start`  `/ping`  `/text`\n\n"
-    message += "💡 **Tip:** Click on any command above to execute it!"
+    message += "Other Commands:\n"
+    message += "/start  /ping  /text\n\n"
+    message += "Tip: Click on any command above to execute it!"
     
     await update.message.reply_text(message, parse_mode='Markdown')
 
@@ -799,10 +878,10 @@ telegram_app.add_handler(CommandHandler("start", start_command))
 telegram_app.add_handler(CommandHandler("ping", ping_command))
 telegram_app.add_handler(CommandHandler("text", text_command))
 telegram_app.add_handler(CommandHandler("commands", list_commands))
-logger.info("Added commands: /start, /ping, /text")
+logger.info("Added commands: /start, /ping, /text, /commands")
 
 # Add all stock commands for all timeframes
-for stock in stocks + [gold]:
+for stock in stocks + [kse100] + [gold]:
     for interval_key in interval_map.keys():
         cmd_name = f"{stock['symbol'].lower()}_{interval_key}"
         telegram_app.add_handler(

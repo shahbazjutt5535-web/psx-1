@@ -216,7 +216,7 @@ def ROC(data, period=12):
     """Rate of Change"""
     return data['close'].pct_change(periods=period) * 100
 
-    def STOCH(data, k_period=14, d_period=3):
+def STOCH(data, k_period=14, d_period=3):
     """Stochastic Oscillator %K and %D"""
     low_min = data['low'].rolling(window=k_period).min()
     high_max = data['high'].rolling(window=k_period).max()
@@ -239,7 +239,6 @@ def STOCHRSI(data, rsi_period=14, stoch_k=3, stoch_d=3):
     stoch_rsi_d = stoch_rsi_k.rolling(window=stoch_d).mean()
     
     return stoch_rsi_k, stoch_rsi_d
-
 
 def WILLIAMS_R(data, period=14):
     """Williams %R Indicator"""

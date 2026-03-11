@@ -659,89 +659,127 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
 
 # -------------------------
 # Basic Commands
+
+# Text Command - Returns the analysis template
+# -------------------------
+async def text_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /text command - returns the analysis template for copying"""
+    try:
+        template = get_analysis_template()
+        await update.message.reply_text(template)
+        logger.info(f"Text command used by user {update.effective_user.id}")
+    except Exception as e:
+        logger.error(f"Error in text command: {e}")
+        await update.message.reply_text("Error retrieving analysis template. Please try again.")
+
+# -------------------------
+# Start/Ping Commands
 # -------------------------
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "PSX Bot is Working! ✅\n"
-        "Use /commands to see all available symbols and timeframes."
+    """Handle /start command with simple response"""
+    
+    start_time = time.time()
+    msg = await update.message.reply_text("Checking...")
+    end_time = time.time()
+    ping_time = round((end_time - start_time) * 1000, 2)
+    
+    await msg.edit_text(
+        f"Your PSX Bot is working! ✅\n"
+        f"Ping response time: {ping_time}ms"
     )
 
 async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Pong!")
-
-async def list_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = "📋 Available Commands 📋\n\n"
-    
-    for stock in stocks + [kse100] + [gold]:
-        message += f"**{stock['symbol']}** - {stock['name']}\n"
-        timeframes = ['5m', '15m', '30m', '1h', '4h', '1d', '1w']
-        commands_list = [f"/{stock['symbol'].lower()}_{tf}" for tf in timeframes]
-        message += f"{' ,  '.join(commands_list)}\n\n"
-    
-    message += "━━━━━━━━━━━━━━━━━━━━━\n"
-    message += "**Other Commands:** `/start`  `/ping`  `/commands`\n"
-    
-    await update.message.reply_text(message, parse_mode='Markdown')
+    """Simple ping command"""
+    start_time = time.time()
+    msg = await update.message.reply_text("Pong!")
+    end_time = time.time()
+    latency = round((end_time - start_time) * 1000, 2)
+    await msg.edit_text(f"Pong! Response time: {latency}ms")
 
 # -------------------------
-# Build Application
+# Build Telegram Application
 # -------------------------
-from telegram.ext import ApplicationBuilder
-app = ApplicationBuilder().token(BOT_TOKEN).build()
+telegram_app = ApplicationBuilder()\
+    .token(BOT_TOKEN)\
+    .concurrent_updates(True)\
+    .build()
 
-# Add handlers
-app.add_handler(CommandHandler("start", start_command))
-app.add_handler(CommandHandler("ping", ping_command))
-app.add_handler(CommandHandler("commands", list_commands))
+# Add commands
+telegram_app.add_handler(CommandHandler("start", start_command))
+telegram_app.add_handler(CommandHandler("ping", ping_command))
+telegram_app.add_handler(CommandHandler("text", text_command))
+logger.info("Added commands: /start, /ping, /text")
 
-# Add stock commands
-for stock in stocks + [kse100] + [gold]:
+# Add all stock commands for all timeframes
+for stock in stocks + [gold]:
     for interval_key in interval_map.keys():
         cmd_name = f"{stock['symbol'].lower()}_{interval_key}"
-        app.add_handler(
+        telegram_app.add_handler(
             CommandHandler(
-                cmd_name,
+                cmd_name, 
                 create_stock_command(
-                    stock['symbol'],
-                    stock['name'],
-                    stock['tv_symbol'],
+                    stock['symbol'], 
+                    stock['name'], 
+                    stock['tv_symbol'], 
                     interval_key
                 )
             )
         )
-
-# Error handler
-async def error_handler(update, context):
-    logger.error(f"Error: {context.error}")
-
-app.add_error_handler(error_handler)
+        logger.info(f"Added command: /{cmd_name}")
 
 # -------------------------
-# Flask for Render
+# Error Handler
 # -------------------------
-from flask import Flask
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle errors gracefully"""
+    logger.error(f"Error: {context.error}", exc_info=True)
+    try:
+        if update and update.effective_message:
+            await update.effective_message.reply_text(
+                "An error occurred. Please try again.\n"
+                "If the problem persists, try a different timeframe or contact support."
+            )
+    except Exception as e:
+        logger.error(f"Error in error handler: {e}")
+
+telegram_app.add_error_handler(error_handler)
+
+# -------------------------
+# Flask App for Render
+# -------------------------
 flask_app = Flask(__name__)
 
 @flask_app.route("/")
 def home():
-    return "PSX Bot is Running!"
+    return "PSX Indicator Bot is Running!"
 
 @flask_app.route("/health")
 def health():
-    return {"status": "ok"}, 200
+    return {"status": "healthy", "bot": "running"}, 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
-    flask_app.run(host="0.0.0.0", port=port)
+    flask_app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 # -------------------------
-# Main
+# Main Execution
 # -------------------------
 if __name__ == "__main__":
-    # Start Flask in thread
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    
-    # Start bot
-    print("Starting bot...")
-    app.run_polling()
+    try:
+        # Start Flask
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+        logger.info(f"Flask server started on port {os.environ.get('PORT', 10000)}")
+        
+        # Small delay
+        time.sleep(2)
+        
+        # Start Telegram bot
+        logger.info("Starting Telegram bot...")
+        telegram_app.run_polling(drop_pending_updates=True)
+        
+    except KeyboardInterrupt:
+        logger.info("Bot stopped")
+    except Exception as e:
+        logger.error(f"Fatal error: {e}", exc_info=True)
+        raise

@@ -1,6 +1,6 @@
 """
 PSX Stock Indicator Telegram Bot
-COMPLETE VERSION - With All Requirements
+COMPLETE VERSION - With HMA, ROC, CCI, ADI, CMF, Keltner Channels, SAR
 """
 
 import os
@@ -151,10 +151,10 @@ gold = {"symbol": "GOLD", "name": "Gold", "tv_symbol": "TVC:GOLD"}
 all_symbols = stocks + [kse100] + [gold]
 
 # -------------------------
-# PROFESSIONAL INDICATORS - Updated Timeframe Distribution
+# PROFESSIONAL INDICATORS - Complete with all new indicators
 # -------------------------
 def calculate_indicators_by_timeframe(df, timeframe):
-    """Calculate indicators with proper timeframe distribution"""
+    """Calculate indicators with complete set including HMA, ROC, CCI, ADI, CMF, Keltner, SAR"""
     
     # ===== BASE INDICATORS (Common for ALL Timeframes) =====
     
@@ -163,29 +163,49 @@ def calculate_indicators_by_timeframe(df, timeframe):
     df['EMA_21'] = EMA(df, 21)
     df['EMA_50'] = EMA(df, 50)
     
-    # EMA 200 - Only on 4h, 1d, 1w (as requested)
+    # EMA 200 - Only on 4h, 1d, 1w
     if timeframe in ["4h", "1d", "1w"]:
         df['EMA_200'] = EMA(df, 200)
+    
+    # HULL MOVING AVERAGE - As per timeframe specs
+    if timeframe in ["5m", "15m"]:
+        df['HMA_9'] = HMA(df, 9)  # Short-term fast
+    elif timeframe in ["30m", "1h"]:
+        df['HMA_14'] = HMA(df, 14)  # Medium-term
+    elif timeframe in ["4h", "1d", "1w"]:
+        df['HMA_21'] = HMA(df, 21)  # Long-term
     
     # Momentum
     df['RSI'] = RSI(df, 14)
     df['MACD'], df['MACD_SIGNAL'], df['MACD_HIST'] = MACD(df)
-    
-    # ULTIMATE OSCILLATOR - ALL TIMEFRAMES (as requested)
     df['UO'] = UltimateOscillator(df)
     
-    # ADX - ALL TIMEFRAMES (30m, 1h, 4h, 1d, 1w as requested)
+    # ADX - on 30m+
     if timeframe in ["30m", "1h", "4h", "1d", "1w"]:
         df['ADX'], df['PLUS_DI'], df['MINUS_DI'] = ADX(df, 14)
+    
+    # ROC (Rate of Change) - on 5m to 4h as per specs
+    if timeframe in ["5m", "15m", "30m", "1h", "4h"]:
+        df['ROC_14'] = ROC(df, 14)  # Fast ROC
+        df['ROC_25'] = ROC(df, 25)  # Slow ROC for trend confirmation
+    
+    # CCI (Commodity Channel Index) - on 5m to 1h as per specs
+    if timeframe in ["5m", "15m", "30m", "1h"]:
+        df['CCI_14'] = CCI(df, 14)  # Fast CCI
+        df['CCI_20'] = CCI(df, 20)  # Standard CCI
     
     # Volume
     df['OBV'] = OBV(df)
     df['VOLUME_MA'] = Volume_MA(df, 20)
     df['VOLUME_OSC'] = Volume_Oscillator(df, 5, 20)
     
-    # Volatility
-    df['ATR'] = ATR(df, 14)
-    df['BB_UPPER'], df['BB_MIDDLE'], df['BB_LOWER'] = Bollinger_Bands(df)
+    # ADI (Accumulation/Distribution Index) - on 1h+
+    if timeframe in ["1h", "4h", "1d", "1w"]:
+        df['ADI'] = ADI(df)
+    
+    # CMF (Chaikin Money Flow) - on 1h, 4h as per specs
+    if timeframe in ["1h", "4h"]:
+        df['CMF'] = CMF(df, 20)
     
     # VWAP (Intraday only)
     if timeframe in ["5m", "15m", "30m", "1h", "4h"]:
@@ -197,32 +217,44 @@ def calculate_indicators_by_timeframe(df, timeframe):
         df['VWAP_UPPER_2'] = upper2
         df['VWAP_LOWER_2'] = lower2
     
-    # ===== SCALPING (5m, 15m) =====
+    # Volatility
+    df['ATR'] = ATR(df, 14)
+    df['BB_UPPER'], df['BB_MIDDLE'], df['BB_LOWER'] = Bollinger_Bands(df)
+    
+    # KELTNER CHANNELS - on 5m to 1h as per specs
+    if timeframe in ["5m", "15m", "30m", "1h"]:
+        df['KC_UPPER'], df['KC_MIDDLE'], df['KC_LOWER'] = KeltnerChannels(df, 20, 2)
+    
+    # Donchian Channel
+    df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df, 20)
+    
+    # PARABOLIC SAR - on 5m to 4h as per specs
+    if timeframe in ["5m", "15m", "30m", "1h", "4h"]:
+        df['PSAR'] = ParabolicSAR(df, 0.02, 0.2)
+    
+    # ===== TIMEFRAME SPECIFIC INDICATORS =====
+    
+    # SCALPING (5m, 15m)
     if timeframe in ["5m", "15m"]:
         df['SUPERTREND'] = SuperTrend(df, period=7, multiplier=3)
-        df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df, 10)
         df['MFI'] = MFI(df, 10)
         df['HA_CLOSE'] = HeikinAshi(df)
     
-    # ===== INTRADAY (30m, 1h) =====
+    # INTRADAY (30m, 1h)
     elif timeframe in ["30m", "1h"]:
-        # ICHIMOKU ON 1H (as requested)
+        # Ichimoku on 1h only
         if timeframe == "1h":
             df['ICHIMOKU_CONVERSION'], df['ICHIMOKU_BASE'], df['ICHIMOKU_SPAN_A'], df['ICHIMOKU_SPAN_B'] = Ichimoku(df)
         
         df['SUPERTREND'] = SuperTrend(df, period=10, multiplier=3)
-        df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df, 20)
         df['MFI'] = MFI(df, 14)
         df['AROON_UP'], df['AROON_DOWN'] = Aroon(df, 14)
         df['HA_CLOSE'] = HeikinAshi(df)
     
-    # ===== SWING (4h) =====
+    # SWING (4h)
     elif timeframe == "4h":
-        # ICHIMOKU ON 4H
         df['ICHIMOKU_CONVERSION'], df['ICHIMOKU_BASE'], df['ICHIMOKU_SPAN_A'], df['ICHIMOKU_SPAN_B'] = Ichimoku(df)
-        
         df['SUPERTREND'] = SuperTrend(df, period=14, multiplier=3)
-        df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df, 20)
         df['MFI'] = MFI(df, 14)
         df['AROON_UP'], df['AROON_DOWN'] = Aroon(df, 14)
         df['HA_CLOSE'] = HeikinAshi(df)
@@ -246,21 +278,16 @@ def calculate_indicators_by_timeframe(df, timeframe):
         except:
             pass
     
-    # ===== POSITION (1d, 1w) =====
-    else:  # "1d", "1w"
-        # ICHIMOKU ON DAILY/WEEKLY
+    # POSITION (1d, 1w)
+    else:
         df['ICHIMOKU_CONVERSION'], df['ICHIMOKU_BASE'], df['ICHIMOKU_SPAN_A'], df['ICHIMOKU_SPAN_B'] = Ichimoku(df)
-        
-        # Multiple SuperTrends for confirmation
         df['SUPERTREND_7'] = SuperTrend(df, period=7, multiplier=3)
         df['SUPERTREND_14'] = SuperTrend(df, period=14, multiplier=3)
-        
-        df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df, 20)
         df['MFI'] = MFI(df, 14)
         df['AROON_UP'], df['AROON_DOWN'] = Aroon(df, 14)
         df['HA_CLOSE'] = HeikinAshi(df)
         
-        # Fibonacci (Full analysis)
+        # Fibonacci
         try:
             fib_high, fib_low, fib_levels, current_level = Fibonacci_Retracement(df, 200)
             if fib_high is not None:
@@ -276,7 +303,7 @@ def calculate_indicators_by_timeframe(df, timeframe):
         except:
             pass
         
-        # Volume Profile (Daily+)
+        # Volume Profile
         try:
             poc, va_low, va_high, bins, profile = Volume_Profile(df, 12)
             if poc is not None:
@@ -434,6 +461,17 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             if ema_section != "📈 Exponential Moving Averages (EMA):\n":
                 message += ema_section + "\n"
             
+            # HMA section - NEW
+            hma_section = "🔷 Hull Moving Average (HMA):\n"
+            if 'HMA_9' in last.index:
+                hma_section += f" - HMA 9: {format_value(last['HMA_9'])}\n"
+            if 'HMA_14' in last.index:
+                hma_section += f" - HMA 14: {format_value(last['HMA_14'])}\n"
+            if 'HMA_21' in last.index:
+                hma_section += f" - HMA 21: {format_value(last['HMA_21'])}\n"
+            if hma_section != "🔷 Hull Moving Average (HMA):\n":
+                message += hma_section + "\n"
+            
             # Ichimoku Cloud
             if 'ICHIMOKU_CONVERSION' in last.index:
                 message += (
@@ -455,9 +493,9 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             if st_section != "📈 SuperTrend:\n":
                 message += st_section + "\n"
             
-            # Parabolic SAR
+            # Parabolic SAR - NEW
             if 'PSAR' in last.index:
-                message += f"📈 Parabolic SAR:\n - Step AF Value(0.02): {format_value(last['PSAR'])}\n\n"
+                message += f"📈 Parabolic SAR:\n - SAR: {format_value(last['PSAR'])}\n\n"
             
             # Heikin Ashi
             if 'HA_CLOSE' in last.index:
@@ -478,6 +516,18 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             # RSI
             if 'RSI' in last.index:
                 message += f"⚡ Relative Strength Index (RSI):\n - RSI (14): {format_value(last['RSI'])}\n\n"
+            
+            # CCI - NEW
+            if 'CCI_14' in last.index:
+                message += f"📊 Commodity Channel Index (CCI):\n - CCI (14): {format_value(last['CCI_14'])}\n"
+            if 'CCI_20' in last.index:
+                message += f" - CCI (20): {format_value(last['CCI_20'])}\n\n"
+            
+            # ROC - NEW
+            if 'ROC_14' in last.index:
+                message += f"📊 Rate of Change (ROC):\n - ROC (14): {format_value(last['ROC_14'])}%\n"
+            if 'ROC_25' in last.index:
+                message += f" - ROC (25): {format_value(last['ROC_25'])}%\n\n"
             
             # ADX
             if 'ADX' in last.index:
@@ -502,6 +552,14 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
             # MFI
             if 'MFI' in last.index:
                 message += f"💧 Money Flow Index (MFI):\n - MFI: {format_value(last['MFI'])}\n\n"
+            
+            # ADI - NEW
+            if 'ADI' in last.index:
+                message += f"📊 Accumulation/Distribution Index (ADI):\n - ADI: {format_value(last['ADI'], 0)}\n\n"
+            
+            # CMF - NEW
+            if 'CMF' in last.index:
+                message += f"📊 Chaikin Money Flow (CMF):\n - CMF (20): {format_value(last['CMF'])}\n\n"
             
             # Volume Analysis
             if 'VOLUME_MA' in last.index:
@@ -546,6 +604,15 @@ def create_stock_command(symbol, name, tv_symbol, interval_key):
                     f" - Middle Band: {format_value(last['BB_MIDDLE'])}\n"
                     f" - Lower Band: {format_value(last['BB_LOWER'])}\n"
                     f" - Band Width: {format_value(bb_width, 2)}%\n\n"
+                )
+            
+            # Keltner Channels - NEW
+            if 'KC_UPPER' in last.index:
+                message += (
+                    f"📊 Keltner Channels (20, 2 ATR):\n"
+                    f" - Upper Channel: {format_value(last['KC_UPPER'])}\n"
+                    f" - Middle Line: {format_value(last['KC_MIDDLE'])}\n"
+                    f" - Lower Channel: {format_value(last['KC_LOWER'])}\n\n"
                 )
             
             # ATR

@@ -25,18 +25,22 @@ nest_asyncio.apply()
 # -------------------------
 # Fix input() for tvDatafeed
 # -------------------------
+# -------------------------
+# CRITICAL FIX: Patch input() for Render
+# -------------------------
 import builtins
 original_input = builtins.input
-builtins.input = lambda prompt='': 'y\n'
+builtins.input = lambda prompt='': 'n\n'  # Changed from 'y' to 'n' (skip menu)
 
 # Import tvDatafeed
 try:
     from tvDatafeed import TvDatafeed, Interval
-    print("tvDatafeed imported successfully")
+    print("✅ tvDatafeed imported successfully")
 except Exception as e:
-    print(f"Failed to import tvDatafeed: {e}")
+    print(f"❌ Failed to import tvDatafeed: {e}")
     raise
 
+# Restore input (keep as is)
 builtins.input = original_input
 
 # -------------------------
@@ -58,23 +62,36 @@ if not BOT_TOKEN:
 # -------------------------
 # TradingView Initialization
 # -------------------------
+# -------------------------
+# SIMPLIFIED TradingView Initialization for Render
+# -------------------------
 def init_tvdatafeed():
-    """Initialize TvDatafeed with proper handling"""
+    """Initialize TvDatafeed - Simplified for Render (no login)"""
     try:
-        # Try with credentials from environment (optional)
-        tv_username = os.environ.get("TV_USERNAME")
-        tv_password = os.environ.get("TV_PASSWORD")
-        
-        if tv_username and tv_password:
-            tv = TvDatafeed(username=tv_username, password=tv_password)
-        else:
-            tv = TvDatafeed()
-        
-        logger.info("TvDatafeed initialized successfully")
+        # auto_login=False is KEY - no prompts, no login needed
+        tv = TvDatafeed(auto_login=False)
+        logger.info("✅ TvDatafeed initialized with auto_login=False")
         return tv
     except Exception as e:
-        logger.error(f"Failed to initialize TvDatafeed: {e}")
+        logger.error(f"❌ Failed to initialize TvDatafeed: {e}")
         raise
+
+# Initialize TvDatafeed
+try:
+    tv = init_tvdatafeed()
+    # Optional test (can remove if causing issues)
+    try:
+        test_data = tv.get_hist(symbol="FFC", exchange="PSX", interval=Interval.in_daily, n_bars=1)
+        if test_data is not None and not test_data.empty:
+            logger.info("✅ Connection test successful")
+        else:
+            logger.warning("⚠️ Test returned no data, but continuing...")
+    except:
+        logger.warning("⚠️ Test failed, but continuing...")
+        
+except Exception as e:
+    logger.error(f"❌ Fatal: Could not initialize TvDatafeed: {e}")
+    raise
 
 # Initialize TvDatafeed
 tv = init_tvdatafeed()

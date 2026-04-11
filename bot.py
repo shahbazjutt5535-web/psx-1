@@ -178,7 +178,7 @@ def calculate_indicators_by_timeframe(df, timeframe):
         df['HMA_9'] = HMA(df, 9)
     elif timeframe in ["30m", "1h"]:
         df['HMA_14'] = HMA(df, 14)
-    elif timeframe in ["4h", "1d", "1w"]:
+    elif timeframe in ["4h", "1d", "1w", "1m"]:
         df['HMA_21'] = HMA(df, 21)
     
     # NEW: Stochastic (14,3) - For 5m, 15m, 30m
@@ -203,7 +203,7 @@ def calculate_indicators_by_timeframe(df, timeframe):
         df['ADX'], df['PLUS_DI'], df['MINUS_DI'] = ADX(df, 14)
     
     # ROC - 5m to 4h
-    if timeframe in ["5m", "15m", "30m", "1h", "4h"]:
+    if timeframe in ["5m", "15m", "30m", "1h", "4h", "1d"]:
         df['ROC_14'] = ROC(df, 14)
         df['ROC_25'] = ROC(df, 25)
     
@@ -226,11 +226,11 @@ def calculate_indicators_by_timeframe(df, timeframe):
         df['CMF'] = CMF(df, 20)
     
     # ELDER RAY - 15m to 4h (as requested)
-    if timeframe in ["15m", "30m", "1h", "4h"]:
+    if timeframe in ["15m", "30m", "1h", "4h", "1d"]:
         df['BULL_POWER'], df['BEAR_POWER'] = ElderRay(df, 13)
     
     # VWAP for intraday
-    if timeframe in ["5m", "15m", "30m", "1h", "4h"]:
+    if timeframe in ["5m", "15m", "30m", "1h", "4h", "1d", "1w", "1m"]:
         df['VWAP'] = VWAP_HLC3(df)
         vwap, upper1, lower1, upper2, lower2 = VWAP_Bands(df, 1, 2)
         df['VWAP'] = vwap
@@ -251,7 +251,7 @@ def calculate_indicators_by_timeframe(df, timeframe):
     df['DC_UPPER'], df['DC_MIDDLE'], df['DC_LOWER'] = DonchianChannel(df, 20)
     
     # Parabolic SAR - 5m to 4h
-    if timeframe in ["5m", "15m", "30m", "1h", "4h"]:
+    if timeframe in ["5m", "15m", "30m", "1h", "4h", "1d", "1w"]:
         df['PSAR'] = ParabolicSAR(df)
     
     # Timeframe specific indicators

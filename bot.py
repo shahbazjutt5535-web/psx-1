@@ -112,6 +112,7 @@ interval_map = {
     "4h": Interval.in_4_hour,
     "1d": Interval.in_daily,
     "1w": Interval.in_weekly,
+    "1m": Interval.in_monthly,
 }
 
 # -------------------------
@@ -169,7 +170,7 @@ def calculate_indicators_by_timeframe(df, timeframe):
     df['EMA_50'] = EMA(df, 50)
     
     # EMA 200 for higher timeframes
-    if timeframe in ["4h", "1d", "1w"]:
+    if timeframe in ["4h", "1d", "1w", "1m"]:
         df['EMA_200'] = EMA(df, 200)
     
     # HMA based on timeframe
@@ -198,7 +199,7 @@ def calculate_indicators_by_timeframe(df, timeframe):
     df['UO'] = UltimateOscillator(df)
     
     # ADX - 30m to 1w
-    if timeframe in ["30m", "1h", "4h", "1d", "1w"]:
+    if timeframe in ["30m", "1h", "4h", "1d", "1w", "1m"]:
         df['ADX'], df['PLUS_DI'], df['MINUS_DI'] = ADX(df, 14)
     
     # ROC - 5m to 4h
@@ -217,7 +218,7 @@ def calculate_indicators_by_timeframe(df, timeframe):
     df['VOLUME_OSC'] = Volume_Oscillator(df, 5, 20)
     
     # ADI - 1h to 1w
-    if timeframe in ["1h", "4h", "1d", "1w"]:
+    if timeframe in ["1h", "4h", "1d", "1w", "1m"]:
         df['ADI'] = ADI(df)
     
     # CMF - 1h, 4h

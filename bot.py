@@ -135,7 +135,9 @@ stocks = [
     {"symbol": "BOP", "name": "Bank Of Punjab", "tv_symbol": "PSX:BOP"},
     { "symbol": "USDPKR", "name": "US Dollar / Pakistani Rupee", "tv_symbol": "FX_IDC:USDPKR" },
     { "symbol": "UKOIL", "name": "Brent Crude Oil", "tv_symbol": "TVC:UKOIL" },
-    { "symbol": "DXY", "name": "US Dollar Index", "tv_symbol": "TVC:DXY" }
+    { "symbol": "DXY", "name": "US Dollar Index", "tv_symbol": "TVC:DXY" },
+    { "symbol": "LINK", "name": "Chainlink", "tv_symbol": "BINANCE:LINKUSDT" },
+    { "symbol": "TRX", "name": "TRON", "tv_symbol": "BINANCE:TRXUSDT" },
 ]
 
 # KSE-100 Index - CORRECT SYMBOL
